@@ -586,7 +586,7 @@ export default function BobbinMonitoringPage() {
     const [devPasswordOpen, setDevPasswordOpen] = useState(false);
     const [devPasswordInput, setDevPasswordInput] = useState('');
     const [devPasswordError, setDevPasswordError] = useState<string | null>(null);
-    const [bobbinDbTargetUi, setBobbinDbTargetUi] = useState<BobbinDbTarget>('local');
+    const [bobbinDbTargetUi, setBobbinDbTargetUi] = useState<BobbinDbTarget>('production');
     const [pdaSession, setPdaSession] = useState<BobbinPdaSession | null>(null);
     const [loginEmpCd, setLoginEmpCd] = useState('');
     const [loginPending, setLoginPending] = useState(false);

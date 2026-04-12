@@ -10,13 +10,15 @@ export const BOBBIN_DEV_MODE_STORAGE_KEY = 'bobbin-monitor-dev-mode';
 
 const DB_TARGET_STORAGE_KEY = 'bobbin-monitor-db-target';
 
-/** Effective target for all bobbin API paths (limit / cycle / lifespan). */
+/** Effective target for all bobbin API paths (limit / cycle / lifespan). Default: PROD until user picks LOCAL. */
 export function getBobbinDbTarget(): BobbinDbTarget {
-    if (typeof window === 'undefined') return 'local';
+    if (typeof window === 'undefined') return 'production';
     try {
-        return sessionStorage.getItem(DB_TARGET_STORAGE_KEY) === 'production' ? 'production' : 'local';
+        const v = sessionStorage.getItem(DB_TARGET_STORAGE_KEY);
+        if (v === 'local') return 'local';
+        return 'production';
     } catch {
-        return 'local';
+        return 'production';
     }
 }
 
