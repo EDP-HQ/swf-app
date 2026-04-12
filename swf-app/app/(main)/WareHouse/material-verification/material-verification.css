@@ -1,0 +1,527 @@
+/* Material Verification Dashboard Styles - Optimized Layout */
+
+.material-verification-dashboard {
+    padding: 0;
+    background: #f8f9fa;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 최소화된 상단 헤더 */
+.compact-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    height: 45px;
+    z-index: 100;
+}
+
+.compact-header h1 {
+    margin: 0;
+    font-size: 1.4rem;
+    font-weight: 600;
+}
+
+.header-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.header-controls .p-button {
+    color: white !important;
+}
+
+.header-controls .p-button:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.header-controls .auto-refresh-active {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* 대시보드 레이아웃 (사이드바 + 메인) */
+.dashboard-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;   
+    height: calc(100vh - 60px);
+}
+
+/* 왼쪽 사이드바 탭 */
+.sidebar-tabs {
+    width: 40px;
+    background: #2c3e50;
+    display: flex;
+    flex-direction: column;
+    padding: 0.25rem 0;
+    box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+    z-index: 50;
+}
+
+.tab-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 0.25rem;
+    color: #95a5a6;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border-left: 3px solid transparent;
+    gap: 0.25rem;
+}
+
+.tab-item i {
+    font-size: 1rem;
+}
+
+.tab-item span {
+    font-size: 0.6rem;
+    font-weight: 500;
+    text-align: center;
+    line-height: 1;
+}
+
+.tab-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #ecf0f1;
+}
+
+.tab-item.active {
+    background: rgba(102, 126, 234, 0.2);
+    color: #667eea;
+    border-left-color: #667eea;
+}
+
+/* 메인 컨텐츠 영역 */
+.main-content {
+    flex: 1;
+    overflow: auto;
+    background: #f8f9fa;
+}
+
+.grid-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: white;
+    gap: 0;
+}
+
+.grid-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 1rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.grid-header h3 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.refresh-time {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    opacity: 0.95;
+    font-weight: 500;
+}
+
+.refresh-time i {
+    font-size: 0.85rem;
+}
+
+.refresh-time span {
+    letter-spacing: 0.5px;
+}
+
+/* Flag Legend Styles */
+.flag-legend {
+    display: flex;
+    gap: 2rem;
+    align-items: center;
+}
+
+.flag-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.flag-indicator {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.flag1-indicator {
+    background-color: #080808;
+}
+
+.flag2-indicator {
+    background-color: #f70505;
+}
+
+.empty-rack-indicator {
+    background-color: #a8a8a7;
+}
+
+.grid-content {
+    flex: 0 1 auto;
+    overflow: auto;
+}
+
+.grid-table {
+    width: 100%;
+}
+
+/* Grid Table Styles - Higher specificity to override PrimeReact */
+.material-verification-dashboard .grid-table .p-datatable-thead > tr > th {
+    background: #f8f9fa !important;
+    color: #495057 !important;
+    font-weight: 600 !important;
+    padding: 0.1rem !important;
+    border: 1px solid #dee2e6 !important;
+    text-align: center !important;
+    font-size: 1.0rem !important;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    height: 30px !important;
+}
+
+.material-verification-dashboard .grid-table .p-datatable-tbody > tr > td {
+    padding: 0.4rem !important;
+    border: 1px solid #dee2e6 !important;
+    vertical-align: middle !important;
+    font-size: 1.4rem !important;
+    height: 38px !important;
+}
+
+/* Column Header Content Center Alignment */
+.material-verification-dashboard .grid-table .p-column-header-content {
+    justify-content: center !important;
+    text-align: center !important;
+}
+
+.material-verification-dashboard .grid-table .p-column-header {
+    text-align: center !important;
+}
+
+/* FLAG1이 N인 경우 검정색 배경 (셀 내용) */
+.bin-loc-cell.flagged,
+.bin-location-target-cell.flagged,
+.total-cnt-cell.flagged {
+    background-color: #080808 !important;
+    color: white !important;
+    font-weight: bold;
+}
+
+/* FLAG2가 N인 경우 빨간색 배경 (TD 전체) */
+.material-verification-dashboard .grid-table .p-datatable-tbody > tr > td.flagged2 {
+    background-color: #f70505 !important;
+}
+
+/* FLAG2가 N인 경우 빨간색 배경이 적용된 TD 내의 셀 내용도 흰색으로 */
+.material-verification-dashboard .grid-table .p-datatable-tbody > tr > td.flagged2 .bin-loc-cell,
+.material-verification-dashboard .grid-table .p-datatable-tbody > tr > td.flagged2 .bin-location-target-cell,
+.material-verification-dashboard .grid-table .p-datatable-tbody > tr > td.flagged2 .total-cnt-cell {
+    color: white !important;
+    font-weight: bold;
+}
+
+/* CNT가 0인 경우 주황색 배경 (TD 전체) */
+.material-verification-dashboard .grid-table .p-datatable-tbody > tr > td.empty-rack-cell {
+    background-color: #a8a8a7 !important;
+}
+
+/* EMPTY RACK 셀 내용 스타일 */
+.material-verification-dashboard .grid-table .p-datatable-tbody > tr > td.empty-rack-cell .bin-loc-cell,
+.material-verification-dashboard .grid-table .p-datatable-tbody > tr > td.empty-rack-cell .bin-location-target-cell,
+.material-verification-dashboard .grid-table .p-datatable-tbody > tr > td.empty-rack-cell .total-cnt-cell {
+    color: white !important;
+    font-weight: bold;
+}
+
+/* EMPTY RACK 클래스 (셀 내용) */
+.bin-loc-cell.empty-rack,
+.bin-location-target-cell.empty-rack,
+.total-cnt-cell.empty-rack {
+    background-color: #a8a8a7 !important;
+    color: white !important;
+    font-weight: bold;
+}
+
+.bin-loc-cell,
+.bin-location-target-cell,
+.total-cnt-cell {
+    padding: 0.10rem;
+    border-radius: 1px;
+    text-align: center;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    /* 텍스트 오버플로우 처리 */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+    height: 26px !important;
+}
+
+.bin-loc-cell:hover,
+.bin-location-target-cell:hover,
+.total-cnt-cell:hover {
+    transform: scale(1.02);
+}
+
+.empty-cell {
+    height: 20px;
+}
+
+/* 도넛 차트 섹션 */
+.charts-section {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-top: 2px solid #dee2e6;
+    margin-top: 0;
+}
+
+.chart-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.chart-card h4 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #495057;
+    text-align: center;
+}
+
+.chart-wrapper {
+    width: 100%;
+    max-width: 220px;
+    height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Fullscreen Mode Styles */
+.dashboard-layout:fullscreen {
+    background: white;
+}
+
+.dashboard-layout:fullscreen .sidebar-tabs {
+    height: 100vh;
+}
+
+.dashboard-layout:fullscreen .main-content {
+    height: 100vh;
+}
+
+.dashboard-layout:-webkit-full-screen {
+    background: white;
+}
+
+.dashboard-layout:-webkit-full-screen .sidebar-tabs {
+    height: 100vh;
+}
+
+.dashboard-layout:-webkit-full-screen .main-content {
+    height: 100vh;
+}
+
+.dashboard-layout:-ms-fullscreen {
+    background: white;
+}
+
+.dashboard-layout:-ms-fullscreen .sidebar-tabs {
+    height: 100vh;
+}
+
+.dashboard-layout:-ms-fullscreen .main-content {
+    height: 100vh;
+}
+
+/* Custom Scrollbar */
+.main-content::-webkit-scrollbar,
+.grid-content::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.main-content::-webkit-scrollbar-track,
+.grid-content::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.main-content::-webkit-scrollbar-thumb,
+.grid-content::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.main-content::-webkit-scrollbar-thumb:hover,
+.grid-content::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 1024px) {
+    .sidebar-tabs {
+        width: 35px;
+    }
+    
+    .tab-item span {
+        font-size: 0.55rem;
+    }
+    
+    .tab-item i {
+        font-size: 0.9rem;
+    }
+    
+    .grid-header {
+        padding: 0.5rem 1rem;
+    }
+    
+    .grid-header h3 {
+        font-size: 1rem;
+    }
+    
+    .flag-legend {
+        gap: 1rem;
+    }
+    
+    .flag-item {
+        font-size: 0.75rem;
+    }
+    
+    .charts-section {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .compact-header h1 {
+        font-size: 1rem;
+    }
+    
+    .sidebar-tabs {
+        width: 30px;
+    }
+    
+    .tab-item {
+        padding: 0.5rem 0.15rem;
+    }
+    
+    .tab-item i {
+        font-size: 0.8rem;
+    }
+    
+    .tab-item span {
+        font-size: 0.5rem;
+    }
+    
+    .grid-header {
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.5rem;
+        align-items: flex-start;
+    }
+    
+    .header-left {
+        width: 100%;
+    }
+    
+    .refresh-time {
+        font-size: 0.75rem;
+    }
+    
+    .flag-legend {
+        gap: 0.75rem;
+        font-size: 0.7rem;
+        flex-wrap: wrap;
+    }
+    
+    .flag-indicator {
+        width: 14px;
+        height: 14px;
+    }
+    
+    .material-verification-dashboard .grid-table .p-datatable-thead > tr > th,
+    .material-verification-dashboard .grid-table .p-datatable-tbody > tr > td {
+        padding: 0.25rem !important;
+        font-size: 0.75rem !important;
+    }
+    
+    .charts-section {
+        grid-template-columns: 1fr;
+    }
+    
+    .chart-wrapper {
+        max-width: 150px;
+        height: 150px;
+    }
+}
+
+/* Animation Effects */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.grid-container {
+    animation: fadeIn 0.3s ease-in;
+}
+
+.tab-item {
+    animation: fadeIn 0.5s ease-in;
+}

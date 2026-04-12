@@ -1,0 +1,14 @@
+# Dependencies & build output (all apps under this repo)
+**/node_modules/
+**/.next/
+**/out/
+**/dist/
+
+# Logs & local env
+*.log
+.env
+.env*.local
+
+# OS / editor
+.DS_Store
+Thumbs.db

@@ -1,0 +1,90 @@
+/* Adjust font size for all data cells in the table */
+  /* my-custom-style.css */
+  /* 데이터 테이블이 나란히 배치될 컨테이너 */
+ .data-tables-container {
+    display: flex; /* 수평으로 배치 */
+    justify-content: space-between; /* 테이블 간의 간격을 일정하게 설정 */
+    overflow: hidden; /* 테이블 내부에서 가로 스크롤이 생기지 않도록 설정 */
+  }
+  
+  /* 각각의 테이블에 대해 고정 크기 설정 */
+  .data-table-wrapper {
+    width: 50%; /* 각 테이블의 너비를 50%로 설정 (두 개의 테이블이 가로로 나란히 배치됨) */
+    height: 100%; /* 테이블 높이는 부모의 100% */
+    display: flex;
+    flex-direction: column; /* 제목과 테이블을 수직으로 배치 */
+    overflow: hidden; /* 테이블 내부에서 가로 스크롤이 생기지 않도록 설정 */
+  }
+  
+  /* 제목 스타일 */
+  .my-custom-table-title {
+    margin-bottom: 2px; /* 제목과 테이블 사이의 간격을 설정 */
+    text-align: center; /* 제목을 가운데 정렬 */
+    background-color:white; /* 배경색을 흰색으로 설정 */
+    font-size: 1rem; /* 제목 크기 설정 */
+    font-weight: bold; /* 제목 글씨 굵게 */
+    width: 100%; /* 제목 너비를 전체 너비로 설정 */
+    height: 40px;
+  }
+  
+  /* 테이블 크기 고정 */
+  .my-custom-table {
+    overflow: hidden; /* 스크롤 비활성화 */
+    margin-top: 0; /* 테이블 위의 여백을 제거 */
+    border: 1px solid black;
+    table-layout: fixed; 
+   }
+
+   .p-datatable-wrapper {
+    overflow: hidden !important; /* 스크롤 비활성화 */
+   }
+
+   .my-custom-table th,
+    .my-custom-table td {
+    border: 1px solid black !important; 
+    }
+  .my-custom-table .p-column-header-content {
+      padding: 0; /* padding 제거 */
+      justify-content: center;
+    }
+  
+  .my-custom-table .p-datatable-thead {
+      line-height: 40px; /* 글자 크기와 관계없이 행 높이 고정 */
+      font-size: 20px; 
+      font-weight: bold; 
+      text-align: center; 
+      padding:0px;
+    }
+    
+  /* 테이블 헤더와 셀의 스타일 */
+  .my-custom-table .p-datatable-thead {
+    line-height: 40px; /* 글자 크기와 관계없이 행 높이 고정 */
+    font-size: 20px; 
+    font-weight: bold; 
+    text-align: center; 
+    padding:0px;
+  }
+  .my-custom-table .p-datatable-thead > tr > th {
+    padding: 0px !important;
+    text-align: center!important;
+  }
+  /* 데이터가 8행만 보이도록 하며, 헤더 1행 포함 총 9개의 행이 보이도록 설정 */
+  .my-custom-table .p-datatable-tbody {
+    overflow: hidden; /* 스크롤 비활성화 */
+   } 
+  
+  /* 테이블의 각 셀의 스타일 */
+  .my-custom-table .p-datatable-tbody td {
+    padding: 0px !important;
+    line-height: 45px; /* 글자 크기와 관계없이 행 높이 고정 */
+    font-size: 26px; /* 글자 크기 설정 (여기서만 적용) */
+    font-weight: bold; /* 글자 굵기 설정 */
+    overflow: hidden; /* 스크롤 비활성화 */
+  }
+  
+  /* 각 데이터 행의 높이를 고정 */
+  .my-custom-table .p-datatable-tbody tr {
+    height: 5px; /* 각 행의 높이를 50px로 고정 */
+    line-height: 5px; /* 행 높이에 맞춰 텍스트 수직 중앙 정렬 */
+    overflow: hidden; /* 스크롤 비활성화 */
+  }
