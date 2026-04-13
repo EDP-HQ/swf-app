@@ -7,9 +7,9 @@
     "npm": ">=8.0.0"
   },
   "scripts": {
-    "dev": "next dev -p 8082",
+    "dev": "next dev -p 8089",
     "build": "next build",
-    "start": "next start -p 8082",
+    "start": "next start -p 8089",
     "lint": "next lint"
   },
   "dependencies": {

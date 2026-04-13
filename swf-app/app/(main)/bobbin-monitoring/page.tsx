@@ -736,7 +736,7 @@ export default function BobbinMonitoringPage() {
         setLoginError(null);
         const emp = loginEmpCd.trim();
         if (!emp) {
-            setLoginError('Enter employee code.');
+            setLoginError('Enter employee id.');
             return;
         }
         setLoginPending(true);
@@ -1080,7 +1080,7 @@ export default function BobbinMonitoringPage() {
                     <div className="flex flex-column gap-1 bobbin-page-header">
                         <h2 className="bobbin-page-title bobbin-page-title--wall">Bobbin Monitoring</h2>
                         <p className="bobbin-page-subtitle bobbin-page-subtitle--wall m-0">
-                            Sign in with your employee code to open this screen.
+                            Sign in with your employee id to open this screen.
                         </p>
                         {lastLogoutLabel && (
                             <p className="bobbin-login-last-logout m-0 mt-2 text-color-secondary">
@@ -1146,7 +1146,7 @@ export default function BobbinMonitoringPage() {
                                     htmlFor="bobbin-login-emp"
                                     className="font-semibold bobbin-field-label bobbin-field-label--compact block mb-2"
                                 >
-                                    Employee code
+                                    employee id
                                 </label>
                                 <InputText
                                     id="bobbin-login-emp"
