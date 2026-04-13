@@ -1,20 +1,30 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { Card } from 'primereact/card';
 import { APP_NAV_SECTIONS } from '@/lib/appNavigation';
+
+const HOME_BRAND_ICON = '/favicon.ico?v=esl-app';
 
 export default function HomeHubPage() {
     return (
         <div className="grid">
             <div className="col-12">
                 <div className="card mb-4">
-                    <h2 className="m-0 mb-2 text-2xl font-semibold">Kiswire SWF</h2>
-                    <p className="text-color-secondary line-height-3 m-0">
-                        Choose a module below or use the sidebar. Warehouse, ESL tag tools, and bobbin monitoring run in
-                        this app.
-                    </p>
+                    <div className="flex align-items-center gap-3 flex-wrap">
+                        <Image
+                            src={HOME_BRAND_ICON}
+                            alt=""
+                            width={40}
+                            height={40}
+                            className="border-round"
+                            unoptimized
+                            priority
+                        />
+                        <h2 className="m-0 text-2xl font-semibold">Kiswire SWF</h2>
+                    </div>
                 </div>
             </div>
             {APP_NAV_SECTIONS.map((section) => (

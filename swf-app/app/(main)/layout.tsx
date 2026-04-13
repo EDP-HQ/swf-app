@@ -6,12 +6,12 @@ interface AppLayoutProps {
 }
 
 export const metadata: Metadata = {
-    title: 'Kiswire SWF — Bobbin Monitoring',
-    description: 'Bobbin cycle monitoring',
+    title: 'Kiswire SWF',
+    description: 'Kiswire SWF — warehouse, ESL, bobbin, and related tools',
     robots: { index: false, follow: false },
     viewport: { initialScale: 1, width: 'device-width' },
     icons: {
-        icon: '/favicon.ico'
+        icon: [{ url: '/favicon.ico?v=esl-app', type: 'image/x-icon', sizes: 'any' }]
     }
 };
 

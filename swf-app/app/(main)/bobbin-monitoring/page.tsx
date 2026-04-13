@@ -62,6 +62,9 @@ const BOBBIN_DEV_PASSWORD = '11223344';
 const DEV_PASSWORD_HELP =
     'Enter the developer password to unlock the local/production API toggle, technical reference, and extra diagnostics on this screen.';
 
+/** Product name shown in page headers and browser context. */
+const BOBBIN_PAGE_TITLE = 'Bobbin Lifespan Control Program';
+
 const BOBBIN_DB_TARGET_OPTIONS: { label: string; value: BobbinDbTarget }[] = [
     { label: 'LOCAL', value: 'local' },
     { label: 'PROD', value: 'production' }
@@ -1078,7 +1081,7 @@ export default function BobbinMonitoringPage() {
                 <div className="grid bobbin-monitoring-page bobbin-monitoring-page--wall">
                 <div className="col-12">
                     <div className="flex flex-column gap-1 bobbin-page-header">
-                        <h2 className="bobbin-page-title bobbin-page-title--wall">Bobbin Monitoring</h2>
+                        <h2 className="bobbin-page-title bobbin-page-title--wall">{BOBBIN_PAGE_TITLE}</h2>
                         <p className="bobbin-page-subtitle bobbin-page-subtitle--wall m-0">
                             Sign in with your employee id to open this screen.
                         </p>
@@ -1237,7 +1240,7 @@ export default function BobbinMonitoringPage() {
             <div className="grid bobbin-monitoring-page bobbin-monitoring-page--wall">
             <div className="col-12">
                 <div className="flex flex-column gap-1 bobbin-page-header">
-                    <h2 className="bobbin-page-title bobbin-page-title--wall">Bobbin Monitoring</h2>
+                    <h2 className="bobbin-page-title bobbin-page-title--wall">{BOBBIN_PAGE_TITLE}</h2>
                     <p className="bobbin-page-subtitle bobbin-page-subtitle--wall">
                         Scan or type a bobbin code, then check usage.
                         {pdaSession && (

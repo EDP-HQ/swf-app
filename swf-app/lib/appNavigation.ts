@@ -54,9 +54,9 @@ export const APP_NAV_SECTIONS: AppNavSection[] = [
         label: 'Bobbin',
         items: [
             {
-                label: 'Bobbin monitoring',
+                label: 'Bobbin Lifespan Control Program',
                 to: '/bobbin-monitoring',
-                icon: 'pi pi-fw pi-sync',
+                icon: 'pi pi-fw pi-hourglass',
                 description: 'PDA login, cycle checks, scrap, and limits.'
             }
         ]
