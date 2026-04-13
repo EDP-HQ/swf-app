@@ -787,6 +787,16 @@
     padding-bottom: 0.2rem;
 }
 
+.bobbin-header-limits {
+    text-align: right;
+}
+
+.bobbin-header-limit-icon {
+    font-size: 1.05rem;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
 .bobbin-page-title--wall {
     font-size: clamp(1.35rem, 2vw, 1.75rem);
     margin-bottom: 0.25rem;

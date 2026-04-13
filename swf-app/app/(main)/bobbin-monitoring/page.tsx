@@ -1239,46 +1239,63 @@ export default function BobbinMonitoringPage() {
             <Toast ref={toastRef} position="top-center" />
             <div className="grid bobbin-monitoring-page bobbin-monitoring-page--wall">
             <div className="col-12">
-                <div className="flex flex-column gap-1 bobbin-page-header">
-                    <h2 className="bobbin-page-title bobbin-page-title--wall">{BOBBIN_PAGE_TITLE}</h2>
-                    <p className="bobbin-page-subtitle bobbin-page-subtitle--wall">
-                        Scan or type a bobbin code, then check usage.
-                        {pdaSession && (
-                            <>
-                                {' '}
-                                <span className="bobbin-limit-hint">
-                                    Signed in as <strong>{pdaSession.empName ?? pdaSession.empCd}</strong>.
+                <div className="bobbin-page-header bobbin-page-header--wall flex flex-column lg:flex-row lg:justify-content-between lg:align-items-start gap-3">
+                    <div className="flex flex-column gap-1 min-w-0 flex-1">
+                        <h2 className="bobbin-page-title bobbin-page-title--wall m-0">{BOBBIN_PAGE_TITLE}</h2>
+                        <p className="bobbin-page-subtitle bobbin-page-subtitle--wall m-0">
+                            Scan or type a bobbin code, then check usage.
+                            {pdaSession && (
+                                <>
+                                    {' '}
+                                    <span className="bobbin-limit-hint">
+                                        Signed in as <strong>{pdaSession.empName ?? pdaSession.empCd}</strong>.
+                                    </span>
+                                </>
+                            )}
+                            {limitsReady && (
+                                <>
+                                    {' '}
+                                    <span
+                                        className={`bobbin-db-indicator-pill bobbin-limit-hint ${
+                                            bobbinDbTargetUi === 'production'
+                                                ? 'bobbin-db-indicator-pill--sfcwrdb'
+                                                : 'bobbin-db-indicator-pill--local'
+                                        }`}
+                                        title={`${bobbinDbTargetLabel(bobbinDbTargetUi)} — active database`}
+                                        aria-label={`Database: ${bobbinDbTargetLabel(bobbinDbTargetUi)}`}
+                                    />
+                                </>
+                            )}
+                        </p>
+                    </div>
+                    {limitsReady && (
+                        <div className="bobbin-header-limits flex flex-column align-items-end gap-2 flex-shrink-0 w-full lg:w-auto">
+                            <div className="bobbin-header-limit-line flex align-items-center justify-content-end gap-2 text-sm text-color-secondary">
+                                <i className="pi pi-sync text-primary bobbin-header-limit-icon" aria-hidden />
+                                <span>
+                                    Cycles — max <strong>{cycleLimit}</strong>, warn <strong>{cycleWarningPct}%</strong>
                                 </span>
-                            </>
-                        )}
-                        {limitsReady && (
-                            <span
-                                className={`bobbin-db-indicator-pill bobbin-limit-hint ${
-                                    bobbinDbTargetUi === 'production'
-                                        ? 'bobbin-db-indicator-pill--sfcwrdb'
-                                        : 'bobbin-db-indicator-pill--local'
-                                }`}
-                                title={`${bobbinDbTargetLabel(bobbinDbTargetUi)} — active database`}
-                                aria-label={`Database: ${bobbinDbTargetLabel(bobbinDbTargetUi)}`}
-                            />
-                        )}
-                        {limitsReady && (
-                            <span className="bobbin-limit-hint">
-                                {' '}
-                                Cycles: max <strong>{cycleLimit}</strong>, warn <strong>{cycleWarningPct}%</strong>
-                                {' · '}
-                                Lifespan: max <strong>~{formatLifespanYearsFromDays(lifespanLimitDays)} yr</strong>
-                                {developerMode && (
-                                    <>
-                                        {' '}
-                                        ({lifespanLimitDays} d)
-                                    </>
-                                )}
-                                , warn <strong>{lifespanWarningPct}%</strong>
-                                {developerMode && (limitsFromApi ? ' (TB_BOBBIN_LIMIT).' : ' (defaults).')}
-                            </span>
-                        )}
-                    </p>
+                            </div>
+                            <div className="bobbin-header-limit-line flex align-items-center justify-content-end gap-2 text-sm text-color-secondary">
+                                <i className="pi pi-hourglass text-primary bobbin-header-limit-icon" aria-hidden />
+                                <span>
+                                    Lifespan — max <strong>~{formatLifespanYearsFromDays(lifespanLimitDays)} yr</strong>
+                                    {developerMode && (
+                                        <>
+                                            {' '}
+                                            <span className="text-xs">({lifespanLimitDays} d)</span>
+                                        </>
+                                    )}
+                                    , warn <strong>{lifespanWarningPct}%</strong>
+                                </span>
+                            </div>
+                            {developerMode && (
+                                <span className="text-xs text-color-secondary line-height-3">
+                                    {limitsFromApi ? 'TB_BOBBIN_LIMIT' : 'Defaults'}
+                                </span>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 
