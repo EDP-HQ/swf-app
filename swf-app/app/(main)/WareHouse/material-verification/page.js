@@ -489,6 +489,9 @@ const MaterialVerificationDashboard = () => {
         responsive: true,
         maintainAspectRatio: true,
         plugins: {
+            // chartjs-plugin-datalabels is registered globally (e.g. from Rack Monitoring). It breaks
+            // Doughnut charts on fullscreen resize (expando undefined). These charts use legend only.
+            datalabels: false,
             legend: {
                 position: 'bottom',
                 labels: {
