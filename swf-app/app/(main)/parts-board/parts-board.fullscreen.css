@@ -1,0 +1,272 @@
+/* Full-screen machine dialog for parts board */
+
+.pb-fs-dialog.p-dialog {
+    display: flex;
+    flex-direction: column;
+}
+
+.pb-fs-dialog.p-dialog-maximized {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    top: 0 !important;
+    left: 0 !important;
+}
+
+.pb-fs-dialog .p-dialog-header {
+    flex-shrink: 0;
+}
+
+.pb-fs-dialog .p-dialog-content {
+    flex: 1 1 auto;
+    overflow: hidden !important;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.pb-fs-shell {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.pb-fs-body {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0.75rem 1rem 0.5rem;
+}
+
+.pb-fs-block {
+    flex-shrink: 0;
+}
+
+.pb-fs-block--components {
+    flex-shrink: 0;
+    min-height: 11rem;
+}
+
+.pb-fs-block--grow {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.pb-fs-footer {
+    flex-shrink: 0;
+    padding: 0.5rem 1rem;
+    border-top: 1px solid var(--surface-border);
+    text-align: right;
+    font-size: 0.8rem;
+    color: var(--text-color-secondary);
+}
+
+.pb-fs-section {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.pb-fs-section--components {
+    background: linear-gradient(90deg, #1e40af 0%, #3b82f6 100%);
+    color: #fff;
+    border-radius: 4px 4px 0 0;
+}
+
+.pb-fs-section--rollers {
+    background: linear-gradient(90deg, #0f766e 0%, #14b8a6 100%);
+    color: #fff;
+    border-radius: 4px 4px 0 0;
+    margin-top: 0.75rem;
+}
+
+.pb-fs-table-wrap {
+    border: 1px solid var(--surface-border);
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    background: var(--surface-0);
+}
+
+.pb-fs-table-wrap--components {
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: min(14rem, 32vh);
+}
+
+.pb-fs-table-wrap--rollers {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.pb-fs-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    border-spacing: 0;
+    font-size: 0.8125rem;
+}
+
+/* Column widths */
+.pb-fs-col--num { width: 2.5rem; }
+.pb-fs-col--edit { width: 2.75rem; }
+.pb-fs-col--active { width: 3.5rem; }
+.pb-fs-col--status { width: 5.5rem; }
+.pb-fs-col--usage { width: 6.5rem; }
+.pb-fs-col--time { width: 7rem; }
+.pb-fs-col--date { width: 6.5rem; }
+.pb-fs-col--part { width: 8rem; }
+.pb-fs-col--part-id { width: 8.5rem; }
+.pb-fs-col--type { width: 5rem; }
+.pb-fs-col--bin { width: 9rem; }
+.pb-fs-col--desc { width: auto; min-width: 10rem; }
+
+.pb-fs-table th,
+.pb-fs-table td {
+    padding: 0.55rem 0.65rem;
+    border-bottom: 1px solid var(--surface-border);
+    vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pb-fs-table th {
+    text-align: left;
+    font-weight: 700;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-clip: padding-box;
+}
+
+.pb-fs-th--center,
+.pb-fs-col--center {
+    text-align: center;
+}
+
+.pb-fs-table--components thead th {
+    background: #dbeafe;
+    color: #1e3a8a;
+    border-bottom: 2px solid #93c5fd;
+    box-shadow: 0 1px 0 #93c5fd;
+}
+
+.pb-fs-table--rollers thead th {
+    background: #ccfbf1;
+    color: #115e59;
+    border-bottom: 2px solid #5eead4;
+    box-shadow: 0 1px 0 #5eead4;
+}
+
+.pb-fs-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.pb-fs-table tbody tr:nth-child(even) td {
+    background: var(--surface-50);
+}
+
+.pb-fs-table tbody tr:hover td {
+    background: var(--surface-hover);
+}
+
+.pb-fs-table tbody tr.pb-fs-row--ok td:first-child {
+    box-shadow: inset 3px 0 0 #22c55e;
+}
+
+.pb-fs-table tbody tr.pb-fs-row--due td:first-child {
+    box-shadow: inset 3px 0 0 #f59e0b;
+}
+
+.pb-fs-table tbody tr.pb-fs-row--overdue td:first-child {
+    box-shadow: inset 3px 0 0 #ef4444;
+}
+
+.pb-fs-table tbody tr.pb-fs-row--highlight td {
+    background: color-mix(in srgb, var(--primary-color) 12%, var(--surface-0)) !important;
+}
+
+.pb-fs-col--desc {
+    white-space: normal;
+    word-break: break-word;
+}
+
+.pb-fs-col--time,
+.pb-fs-col--date,
+.pb-fs-col--num {
+    white-space: nowrap;
+}
+
+.pb-fs-usage {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.pb-fs-usage .p-progressbar {
+    height: 0.4rem;
+    width: 100%;
+}
+
+.pb-fs-usage span {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-color-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.pb-fs-mono {
+    font-family: ui-monospace, monospace;
+    font-size: 0.75rem;
+}
+
+.pb-fs-runtime {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.pb-fs-table .pb-timer--live .pb-timer__icon {
+    color: #16a34a;
+}
+
+.pb-fs-table .pb-timer--idle .pb-timer__icon {
+    color: var(--surface-400);
+}
+
+.pb-edit-dl {
+    display: grid;
+    grid-template-columns: 6rem 1fr;
+    gap: 0.4rem 0.75rem;
+    margin: 0 0 1rem;
+    font-size: 0.85rem;
+}
+
+.pb-edit-dl dt {
+    margin: 0;
+    color: var(--text-color-secondary);
+}
+
+.pb-edit-dl dd {
+    margin: 0;
+    font-weight: 600;
+}
