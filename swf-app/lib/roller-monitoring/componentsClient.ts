@@ -1,8 +1,9 @@
 import { getRollerDbTarget, type RollerDbTarget } from './rollerMonitoringDbTarget';
+import { componentOptionByKey } from './componentCatalog';
 import { fixedPartKeyToSeq } from './machineParts';
 import type { MachineFixedPartKey } from './types';
 
-export type ComponentsApiEndpoint = 'select' | 'replace' | 'updateruntime' | 'updateruntimelimit';
+export type ComponentsApiEndpoint = 'select' | 'replace' | 'updateruntime' | 'updateruntimelimit' | 'insert';
 
 const DEFAULT_SWF_API = 'http://127.0.0.1:3200';
 
@@ -128,19 +129,23 @@ async function postComponentsEndpoint<T = unknown>(
 
 export async function replaceComponent(
     machineName: string,
-    partKey: MachineFixedPartKey,
     target = getRollerDbTarget(),
-    options?: { partId?: string; runtimeLimit?: number }
+    options: { partKey?: MachineFixedPartKey; partId?: string; runtimeLimit?: number } = {}
 ): Promise<void> {
+    if (!options.partId && !options.partKey) {
+        throw new Error('PartId or part key required');
+    }
+
     await postComponentsEndpoint(
         'replace',
         {
             params: {
                 MachineName: machineName,
-                PartKey: partKey,
-                PartSeq: fixedPartKeyToSeq(partKey),
-                ...(options?.partId ? { PartId: options.partId } : {}),
-                ...(options?.runtimeLimit != null ? { RuntimeLimit: options.runtimeLimit } : {})
+                ...(options.partId ? { PartId: options.partId } : {}),
+                ...(options.partKey
+                    ? { PartKey: options.partKey, PartSeq: fixedPartKeyToSeq(options.partKey) }
+                    : {}),
+                ...(options.runtimeLimit != null ? { RuntimeLimit: options.runtimeLimit } : {})
             }
         },
         target
@@ -191,6 +196,41 @@ export async function updateComponentRuntimeLimit(
                 ...(options.partKey
                     ? { PartKey: options.partKey, PartSeq: fixedPartKeyToSeq(options.partKey) }
                     : {})
+            }
+        },
+        target
+    );
+}
+
+export async function insertComponent(
+    machineName: string,
+    runtimeLimitHours: number,
+    target = getRollerDbTarget(),
+    options: {
+        partKey?: MachineFixedPartKey;
+        partType?: string;
+        company?: string;
+        factory?: string;
+    } = {}
+): Promise<void> {
+    const partKey = options.partKey;
+    const partType =
+        options.partType?.trim().toUpperCase() ||
+        (partKey ? componentOptionByKey(partKey)?.partType : undefined);
+
+    if (!partType) {
+        throw new Error('Part key or part type required');
+    }
+
+    await postComponentsEndpoint(
+        'insert',
+        {
+            params: {
+                MachineName: machineName,
+                RuntimeLimit: runtimeLimitHours,
+                Company: options.company ?? 'KSB',
+                Factory: options.factory ?? 'F002',
+                PartType: partType
             }
         },
         target

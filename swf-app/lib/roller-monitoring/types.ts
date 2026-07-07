@@ -1,6 +1,6 @@
 export type PartHealthStatus = 'OK' | 'Due' | 'Overdue';
 
-export type FixedPartKind = 'gearbox' | 'skipper_bearing_sf' | 'skipper_bearing_sb';
+export type FixedPartKind = 'gearbox' | 'skipper_bearing_sf' | 'skipper_bearing_sb' | 'custom';
 
 export type MachineFixedPartKey = 'gearbox' | 'skipperFront' | 'skipperBack';
 
@@ -39,6 +39,8 @@ export type MachineDashboard = {
     gearbox: FixedPartRow;
     skipperFront: FixedPartRow;
     skipperBack: FixedPartRow;
+    /** Additional registered parts (bearing, etc.) — PART_SEQ 4+. */
+    extraParts: FixedPartRow[];
     okCount: number;
     dueCount: number;
     overdueCount: number;

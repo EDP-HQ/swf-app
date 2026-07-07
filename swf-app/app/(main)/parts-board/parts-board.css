@@ -198,6 +198,11 @@
     transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
+.pb-comp-tile--extra .pb-comp-tile__label {
+    font-size: 0.72em;
+    letter-spacing: 0.02em;
+}
+
 .pb-comp-tile:hover {
     transform: scale(1.03);
     z-index: 1;

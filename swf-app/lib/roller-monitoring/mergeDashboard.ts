@@ -127,6 +127,7 @@ export function mergeRollerDashboard(input: MergeInput): RollerDashboardData {
                 gearbox: createGearbox(),
                 skipperFront: createSkipperFront(),
                 skipperBack: createSkipperBack(),
+                extraParts: [],
                 okCount: 0,
                 dueCount: 0,
                 overdueCount: 0,

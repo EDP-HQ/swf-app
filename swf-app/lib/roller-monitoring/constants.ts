@@ -7,6 +7,9 @@ export const GEARBOX_DEFAULT_LIMIT_HOURS = 8000;
 /** Default limit for each skipper bearing (SF + SB per machine). */
 export const SKIPPER_BEARING_DEFAULT_LIMIT_HOURS = 6000;
 
+/** Default limit for custom parts (bearing, etc.). */
+export const CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS = 6000;
+
 /** Fraction of limit at which status becomes Due (matches desktop app). */
 export const ROLLER_DUE_FRACTION = 0.8;
 

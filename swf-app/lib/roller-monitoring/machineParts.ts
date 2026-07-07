@@ -7,6 +7,12 @@ import type { FixedPartKind, FixedPartRow, MachineDashboard, MachineFixedPartKey
 
 export const MACHINE_FIXED_PART_KEYS: MachineFixedPartKey[] = ['gearbox', 'skipperFront', 'skipperBack'];
 
+export function formatCustomDisplayName(partType: string): string {
+    const normalized = partType.trim().replace(/\s+/g, ' ').toLowerCase();
+    if (!normalized) return 'Part';
+    return normalized.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function createGearbox(): FixedPartRow {
     return {
         partKind: 'gearbox',
@@ -148,6 +154,29 @@ export function machineFixedPartsLiveSnapshot(
     });
 }
 
+export type ComponentLiveSnapshot = {
+    partKey?: MachineFixedPartKey;
+    part: FixedPartRow;
+    runtimeHours: number;
+    runtimeSec: number;
+};
+
+/** Live runtime for all registered components (standard + custom). */
+export function allComponentLiveSnapshots(
+    machine: MachineDashboard,
+    syncEpochMs: number,
+    nowMs: number
+): ComponentLiveSnapshot[] {
+    const snaps: ComponentLiveSnapshot[] = machineFixedPartsLiveSnapshot(machine, syncEpochMs, nowMs).map(
+        ({ key, part, runtimeHours, runtimeSec }) => ({ partKey: key, part, runtimeHours, runtimeSec })
+    );
+    for (const part of machine.extraParts) {
+        const runtimeHours = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
+        snaps.push({ part, runtimeHours, runtimeSec: runtimeHoursToSeconds(runtimeHours) });
+    }
+    return snaps;
+}
+
 export function applySavedComponentRuntime(
     machine: MachineDashboard,
     savedSecByKey: Partial<Record<MachineFixedPartKey, number>>
@@ -161,16 +190,40 @@ export function applySavedComponentRuntime(
     return recountMachine(next);
 }
 
+/** Apply saved runtime by PartId (standard + custom components). */
+export function applySavedAllComponentRuntime(
+    machine: MachineDashboard,
+    savedSecByPartId: Map<string, number>
+): MachineDashboard {
+    if (savedSecByPartId.size === 0) return machine;
+
+    let next = { ...machine };
+    for (const key of MACHINE_FIXED_PART_KEYS) {
+        const partId = next[key].partId;
+        if (!partId || !savedSecByPartId.has(partId)) continue;
+        const sec = savedSecByPartId.get(partId)!;
+        next[key] = withFixedPartStats(next[key], sec / 3600, next[key].limitHours);
+    }
+    next.extraParts = next.extraParts.map((part) => {
+        if (!part.partId || !savedSecByPartId.has(part.partId)) return part;
+        const sec = savedSecByPartId.get(part.partId)!;
+        return withFixedPartStats(part, sec / 3600, part.limitHours);
+    });
+    return recountMachine(next);
+}
+
 export function getMachineFixedParts(machine: MachineDashboard): FixedPartRow[] {
     return [machine.gearbox, machine.skipperFront, machine.skipperBack];
+}
+
+export function getAllMachineComponents(machine: MachineDashboard): FixedPartRow[] {
+    return [...getMachineFixedParts(machine), ...machine.extraParts];
 }
 
 export function recountMachine(machine: MachineDashboard): MachineDashboard {
     const allStatuses = [
         ...machine.rollers.map((r) => r.status),
-        machine.gearbox.status,
-        machine.skipperFront.status,
-        machine.skipperBack.status
+        ...getAllMachineComponents(machine).map((p) => p.status)
     ];
     return {
         ...machine,
@@ -179,6 +232,16 @@ export function recountMachine(machine: MachineDashboard): MachineDashboard {
         overdueCount: allStatuses.filter((s) => s === 'Overdue').length,
         activeCount: machine.rollers.filter((r) => r.isActive).length
     };
+}
+
+function mergeExtraParts(
+    incoming: FixedPartRow[],
+    old: FixedPartRow[],
+    elapsedHours: number,
+    machineStillRunning: boolean
+): FixedPartRow[] {
+    const oldById = new Map(old.filter((p) => p.partId).map((p) => [p.partId!, p]));
+    return incoming.map((part) => preserveFixedPart(part, oldById.get(part.partId ?? ''), elapsedHours, machineStillRunning));
 }
 
 export function mergePreservedFixedParts(
@@ -206,8 +269,9 @@ export function mergePreservedFixedParts(
             elapsed,
             stillRunning
         );
+        const extraParts = mergeExtraParts(m.extraParts, old.extraParts ?? [], elapsed, stillRunning);
 
-        return recountMachine({ ...m, gearbox, skipperFront, skipperBack });
+        return recountMachine({ ...m, gearbox, skipperFront, skipperBack, extraParts });
     });
 }
 
@@ -223,7 +287,7 @@ export type PlannerPartRow = {
 export function collectPlannerParts(machines: MachineDashboard[]): PlannerPartRow[] {
     const rows: PlannerPartRow[] = [];
     for (const m of machines) {
-        for (const part of getMachineFixedParts(m)) {
+        for (const part of getAllMachineComponents(m)) {
             if (part.status === 'Due' || part.status === 'Overdue') {
                 rows.push({
                     machine: m.name,

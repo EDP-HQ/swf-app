@@ -3,22 +3,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
+import { Dropdown } from 'primereact/dropdown';
 import { InputNumber } from 'primereact/inputnumber';
 import { InputText } from 'primereact/inputtext';
 import { Message } from 'primereact/message';
 import { ProgressBar } from 'primereact/progressbar';
 import { ProgressSpinner } from 'primereact/progressspinner';
-import { SelectButton } from 'primereact/selectbutton';
 import { Tag } from 'primereact/tag';
 import { Toast } from 'primereact/toast';
-import { ROLLER_AUTO_REFRESH_MS, ROLLER_LIVE_TICK_MS } from '@/lib/roller-monitoring/constants';
+import { CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS, GEARBOX_DEFAULT_LIMIT_HOURS, ROLLER_AUTO_REFRESH_MS, ROLLER_LIVE_TICK_MS } from '@/lib/roller-monitoring/constants';
 import { formatReplaceDt, formatRuntimeHms } from '@/lib/roller-monitoring/formatRuntime';
 import { RuntimeTimer } from '@/lib/roller-monitoring/RuntimeTimer';
 import {
-    applySavedComponentRuntime,
+    allComponentLiveSnapshots,
+    applySavedAllComponentRuntime,
     liveFixedPartRuntimeHours,
-    liveFixedPartStatus,
-    machineFixedPartsLiveSnapshot
+    liveFixedPartStatus
 } from '@/lib/roller-monitoring/machineParts';
 import {
     applySavedRollerRuntime,
@@ -32,22 +32,23 @@ import {
     updateRollerRuntime,
     updateRollerRuntimeLimit
 } from '@/lib/roller-monitoring/rollerClient';
-import { replaceComponent, updateComponentRuntime, updateComponentRuntimeLimit } from '@/lib/roller-monitoring/componentsClient';
 import {
-    getRollerDbTarget,
-    rollerDbTargetLabel,
-    setRollerDbTarget,
-    type RollerDbTarget
-} from '@/lib/roller-monitoring/rollerMonitoringDbTarget';
+    ADD_PART_CUSTOM,
+    COMPONENT_DEFAULT_COMPANY,
+    COMPONENT_DEFAULT_FACTORY,
+    COMPONENT_PART_OPTIONS,
+    componentOptionByKey,
+    isComponentRegistered,
+    isCustomPartNameTaken,
+    missingComponentOptions,
+    type AddPartChoice,
+    type ComponentPartOption
+} from '@/lib/roller-monitoring/componentCatalog';
+import { insertComponent, replaceComponent, updateComponentRuntime, updateComponentRuntimeLimit } from '@/lib/roller-monitoring/componentsClient';
 import { computeRollerStatus, usagePct } from '@/lib/roller-monitoring/rollerStatus';
 import type { FixedPartRow, MachineDashboard, MachineFixedPartKey, PartHealthStatus, RollerRow } from '@/lib/roller-monitoring/types';
 import './parts-board.css';
 import './parts-board.fullscreen.css';
-
-const DB_TARGET_OPTIONS: { label: string; value: RollerDbTarget }[] = [
-    { label: 'LOCAL', value: 'local' },
-    { label: 'PROD', value: 'production' }
-];
 
 type LiveRoller = {
     roller: RollerRow;
@@ -59,7 +60,8 @@ type LiveRoller = {
 
 type SelectedPart =
     | { kind: 'roller'; machine: MachineDashboard; roller: RollerRow }
-    | { kind: 'fixed'; machine: MachineDashboard; partKey: MachineFixedPartKey; part: FixedPartRow };
+    | { kind: 'fixed'; machine: MachineDashboard; partKey: MachineFixedPartKey; part: FixedPartRow }
+    | { kind: 'custom'; machine: MachineDashboard; part: FixedPartRow };
 
 function barColor(pct: number): string {
     if (pct >= 100) return '#ef4444';
@@ -121,6 +123,7 @@ function MachineFullscreenView({
     nowMs,
     highlightRollerKey,
     onEditFixed,
+    onEditCustom,
     onEditRoller
 }: {
     machine: MachineDashboard;
@@ -128,20 +131,25 @@ function MachineFullscreenView({
     nowMs: number;
     highlightRollerKey: string | null;
     onEditFixed: (partKey: MachineFixedPartKey, part: FixedPartRow) => void;
+    onEditCustom: (part: FixedPartRow) => void;
     onEditRoller: (roller: RollerRow) => void;
 }) {
-    const fixedRows: { key: MachineFixedPartKey; part: FixedPartRow }[] = [
+    const standardRows: { key: MachineFixedPartKey; part: FixedPartRow }[] = [
         { key: 'gearbox', part: machine.gearbox },
         { key: 'skipperFront', part: machine.skipperFront },
         { key: 'skipperBack', part: machine.skipperBack }
     ];
+    const componentSubtitle =
+        machine.extraParts.length > 0
+            ? `Gearbox · SF · SB · +${machine.extraParts.length} more`
+            : 'Gearbox · Skipper SF · Skipper SB';
 
     return (
         <div className="pb-fs-body">
             <div className="pb-fs-block pb-fs-block--components">
                 <div className="pb-fs-section pb-fs-section--components">
                     <span>Components</span>
-                    <span>Gearbox · Skipper SF · Skipper SB</span>
+                    <span>{componentSubtitle}</span>
                 </div>
                 <div className="pb-fs-table-wrap pb-fs-table-wrap--components">
                     <table className="pb-fs-table pb-fs-table--components">
@@ -172,7 +180,7 @@ function MachineFullscreenView({
                             </tr>
                         </thead>
                         <tbody>
-                            {fixedRows.map(({ key, part }) => {
+                            {standardRows.map(({ key, part }) => {
                                 const rt = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
                                 const pct = usagePct(rt, part.limitHours);
                                 const status = liveFixedPartStatus(part, machine, syncEpochMs, nowMs);
@@ -204,6 +212,44 @@ function MachineFullscreenView({
                                                 aria-label="Edit"
                                                 tooltip="Edit"
                                                 onClick={() => onEditFixed(key, part)}
+                                            />
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {machine.extraParts.map((part) => {
+                                const rowKey = part.partId || part.displayName;
+                                const rt = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
+                                const pct = usagePct(rt, part.limitHours);
+                                const status = liveFixedPartStatus(part, machine, syncEpochMs, nowMs);
+                                return (
+                                    <tr key={rowKey} className={rowStatusClass(status)}>
+                                        <td className="pb-fs-col pb-fs-col--num pb-fs-col--center">{part.partSeq ?? '—'}</td>
+                                        <td className="pb-fs-col pb-fs-col--part font-medium">{part.displayName}</td>
+                                        <td className="pb-fs-col pb-fs-col--part-id pb-fs-mono">{part.partId || '—'}</td>
+                                        <td className="pb-fs-col pb-fs-col--type">{formatPartTypeLabel(part)}</td>
+                                        <td className="pb-fs-col pb-fs-col--time">
+                                            <RuntimeTimer
+                                                runtimeHours={rt}
+                                                ticking={machine.running}
+                                                variant="table"
+                                            />
+                                        </td>
+                                        <td className="pb-fs-col pb-fs-col--time pb-fs-runtime">{formatRuntimeHms(part.limitHours)}</td>
+                                        <UsageCell pct={pct} />
+                                        <td className="pb-fs-col pb-fs-col--date">{formatReplaceDt(part.replaceDt)}</td>
+                                        <td className="pb-fs-col pb-fs-col--status">
+                                            <Tag value={status} severity={statusSeverity(status)} rounded />
+                                        </td>
+                                        <td className="pb-fs-col pb-fs-col--edit pb-fs-col--center">
+                                            <Button
+                                                icon="pi pi-pencil"
+                                                rounded
+                                                text
+                                                size="small"
+                                                aria-label="Edit"
+                                                tooltip="Edit"
+                                                onClick={() => onEditCustom(part)}
                                             />
                                         </td>
                                     </tr>
@@ -302,6 +348,7 @@ function FixedPartTile({
     machine,
     syncEpochMs,
     nowMs,
+    extra = false,
     onSelect
 }: {
     label: string;
@@ -310,6 +357,7 @@ function FixedPartTile({
     machine: MachineDashboard;
     syncEpochMs: number;
     nowMs: number;
+    extra?: boolean;
     onSelect: () => void;
 }) {
     const runtimeHours = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
@@ -320,7 +368,7 @@ function FixedPartTile({
     return (
         <button
             type="button"
-            className={`pb-comp-tile pb-comp-tile--${status.toLowerCase()} ${ticking ? 'pb-comp-tile--live' : ''}`}
+            className={`pb-comp-tile pb-comp-tile--${status.toLowerCase()} ${ticking ? 'pb-comp-tile--live' : ''} ${extra ? 'pb-comp-tile--extra' : ''}`}
             style={{ '--pb-tile-fill': barColor(pct) } as React.CSSProperties}
             onClick={(e) => {
                 e.stopPropagation();
@@ -367,7 +415,8 @@ function MachineCard({
     search,
     onOpenMachine,
     onOpenRoller,
-    onOpenFixed
+    onOpenFixed,
+    onOpenCustom
 }: {
     machine: MachineDashboard;
     syncEpochMs: number;
@@ -376,6 +425,7 @@ function MachineCard({
     onOpenMachine: () => void;
     onOpenRoller: (live: LiveRoller, key: string) => void;
     onOpenFixed: (partKey: MachineFixedPartKey, part: FixedPartRow) => void;
+    onOpenCustom: (part: FixedPartRow) => void;
 }) {
     const liveRollers = machine.rollers
         .map((r) => buildLiveRoller(r, machine, syncEpochMs, nowMs))
@@ -424,6 +474,19 @@ function MachineCard({
                         nowMs={nowMs}
                         onSelect={() => onOpenFixed('skipperBack', machine.skipperBack)}
                     />
+                    {machine.extraParts.map((part) => (
+                        <FixedPartTile
+                            key={part.partId || part.displayName}
+                            label={part.displayName}
+                            shortLabel={part.partType || part.displayName}
+                            part={part}
+                            machine={machine}
+                            syncEpochMs={syncEpochMs}
+                            nowMs={nowMs}
+                            extra
+                            onSelect={() => onOpenCustom(part)}
+                        />
+                    ))}
                 </div>
 
                 <div className="pb-machine__tiles" onClick={(e) => e.stopPropagation()}>
@@ -448,12 +511,19 @@ export default function PartsBoardPage() {
     const [nowMs, setNowMs] = useState(Date.now());
     const [search, setSearch] = useState('');
     const [autoRefresh, setAutoRefresh] = useState(true);
-    const [dbTarget, setDbTargetUi] = useState<RollerDbTarget>('production');
     const [fullscreenMachineName, setFullscreenMachineName] = useState<string | null>(null);
     const [highlightRollerKey, setHighlightRollerKey] = useState<string | null>(null);
     const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
     const [limitInput, setLimitInput] = useState(3000);
     const [saving, setSaving] = useState(false);
+    const [addComponentOpen, setAddComponentOpen] = useState(false);
+    const [addSaving, setAddSaving] = useState(false);
+    const [addMachineName, setAddMachineName] = useState<string | null>(null);
+    const [addPartChoice, setAddPartChoice] = useState<AddPartChoice | null>(null);
+    const [addCustomPartName, setAddCustomPartName] = useState('');
+    const [addCompany, setAddCompany] = useState(COMPONENT_DEFAULT_COMPANY);
+    const [addFactory, setAddFactory] = useState(COMPONENT_DEFAULT_FACTORY);
+    const [addLimitHours, setAddLimitHours] = useState(GEARBOX_DEFAULT_LIMIT_HOURS);
     const machinesRef = useRef<MachineDashboard[]>([]);
     const syncEpochMsRef = useRef(Date.now());
 
@@ -465,7 +535,7 @@ export default function PartsBoardPage() {
         syncEpochMsRef.current = syncEpochMs;
     }, [syncEpochMs]);
 
-    const loadDashboard = useCallback(async (silent = false, target = getRollerDbTarget()) => {
+    const loadDashboard = useCallback(async (silent = false) => {
         if (!silent) setLoading(true);
         else setRefreshing(true);
         setError(null);
@@ -473,9 +543,9 @@ export default function PartsBoardPage() {
             const prev = machinesRef.current;
             const syncMs = syncEpochMsRef.current;
             const saveNowMs = Date.now();
-            const data = await fetchRollerDashboard(target);
+            const data = await fetchRollerDashboard();
 
-            const savedByMachine = new Map<string, Partial<Record<MachineFixedPartKey, number>>>();
+            const savedSecByPartId = new Map<string, number>();
             const savedRollerSecByBin = new Map<string, number>();
             const saveTasks: Promise<void>[] = [];
 
@@ -487,7 +557,7 @@ export default function PartsBoardPage() {
                     if (!snap.roller.rollerId && !snap.roller.binLocation) continue;
                     savedRollerSecByBin.set(snap.roller.binLocation, snap.runtimeSec);
                     saveTasks.push(
-                        updateRollerRuntime(snap.runtimeSec, target, {
+                        updateRollerRuntime(snap.runtimeSec, 'production', {
                             rollerId: snap.roller.rollerId,
                             binLocation: snap.roller.binLocation
                         })
@@ -496,20 +566,17 @@ export default function PartsBoardPage() {
 
                 if (!oldM.running || newM.running) continue;
 
-                const saved: Partial<Record<MachineFixedPartKey, number>> = {};
-                for (const snap of machineFixedPartsLiveSnapshot(oldM, syncMs, saveNowMs)) {
+                for (const snap of allComponentLiveSnapshots(oldM, syncMs, saveNowMs)) {
                     if (!snap.part.partId) continue;
-                    saved[snap.key] = snap.runtimeSec;
+                    savedSecByPartId.set(snap.part.partId, snap.runtimeSec);
                     saveTasks.push(
-                        updateComponentRuntime(snap.runtimeSec, target, {
+                        updateComponentRuntime(snap.runtimeSec, 'production', {
                             partId: snap.part.partId,
-                            machineName: oldM.name,
-                            partKey: snap.key
+                            ...(snap.partKey
+                                ? { machineName: oldM.name, partKey: snap.partKey }
+                                : {})
                         })
                     );
-                }
-                if (Object.keys(saved).length > 0) {
-                    savedByMachine.set(newM.name, saved);
                 }
             }
 
@@ -530,11 +597,8 @@ export default function PartsBoardPage() {
             if (savedRollerSecByBin.size > 0) {
                 incoming = incoming.map((m) => applySavedRollerRuntime(m, savedRollerSecByBin));
             }
-            if (savedByMachine.size > 0) {
-                incoming = incoming.map((m) => {
-                    const saved = savedByMachine.get(m.name);
-                    return saved ? applySavedComponentRuntime(m, saved) : m;
-                });
+            if (savedSecByPartId.size > 0) {
+                incoming = incoming.map((m) => applySavedAllComponentRuntime(m, savedSecByPartId));
             }
 
             const elapsed = (Date.now() - syncMs) / 3_600_000;
@@ -550,14 +614,13 @@ export default function PartsBoardPage() {
     }, []);
 
     useEffect(() => {
-        setDbTargetUi(getRollerDbTarget());
-        loadDashboard(false, getRollerDbTarget());
+        loadDashboard(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
         if (!autoRefresh) return;
-        const id = window.setInterval(() => loadDashboard(true, getRollerDbTarget()), ROLLER_AUTO_REFRESH_MS);
+        const id = window.setInterval(() => loadDashboard(true), ROLLER_AUTO_REFRESH_MS);
         return () => window.clearInterval(id);
     }, [autoRefresh, loadDashboard]);
 
@@ -573,12 +636,6 @@ export default function PartsBoardPage() {
         }, 300);
         return () => window.clearTimeout(t);
     }, [highlightRollerKey, fullscreenMachineName]);
-
-    const onDbTargetChange = (value: RollerDbTarget) => {
-        setDbTargetUi(value);
-        setRollerDbTarget(value);
-        loadDashboard(true, value);
-    };
 
     const fullscreenMachine = useMemo(
         () => (fullscreenMachineName ? machines.find((m) => m.name === fullscreenMachineName) ?? null : null),
@@ -605,6 +662,11 @@ export default function PartsBoardPage() {
         setLimitInput(part.limitHours);
     };
 
+    const openCustomEdit = (machine: MachineDashboard, part: FixedPartRow) => {
+        setSelectedPart({ kind: 'custom', machine, part });
+        setLimitInput(part.limitHours);
+    };
+
     const closeEdit = () => setSelectedPart(null);
 
     const handleSaveLimit = async () => {
@@ -617,10 +679,10 @@ export default function PartsBoardPage() {
             }
             setSaving(true);
             try {
-                await updateRollerRuntimeLimit(selectedPart.roller.rollerId, limitInput, dbTarget);
+                await updateRollerRuntimeLimit(selectedPart.roller.rollerId, limitInput);
                 toast.current?.show({ severity: 'success', summary: 'Limit saved', life: 3000 });
                 closeEdit();
-                await loadDashboard(true, dbTarget);
+                await loadDashboard(true);
             } catch (e) {
                 toast.current?.show({
                     severity: 'error',
@@ -636,14 +698,15 @@ export default function PartsBoardPage() {
 
         setSaving(true);
         try {
-            await updateComponentRuntimeLimit(limitInput, dbTarget, {
+            await updateComponentRuntimeLimit(limitInput, 'production', {
                 partId: selectedPart.part.partId,
-                machineName: selectedPart.machine.name,
-                partKey: selectedPart.partKey
+                ...(selectedPart.kind === 'fixed'
+                    ? { machineName: selectedPart.machine.name, partKey: selectedPart.partKey }
+                    : {})
             });
             toast.current?.show({ severity: 'success', summary: 'Limit saved', life: 3000 });
             closeEdit();
-            await loadDashboard(true, dbTarget);
+            await loadDashboard(true);
         } catch (e) {
             toast.current?.show({
                 severity: 'error',
@@ -663,10 +726,10 @@ export default function PartsBoardPage() {
             if (!selectedPart.roller.binLocation) return;
             setSaving(true);
             try {
-                await replaceRoller(selectedPart.roller.binLocation, dbTarget);
+                await replaceRoller(selectedPart.roller.binLocation);
                 toast.current?.show({ severity: 'success', summary: 'Roller replaced', life: 3000 });
                 closeEdit();
-                await loadDashboard(true, dbTarget);
+                await loadDashboard(true);
             } catch (e) {
                 toast.current?.show({
                     severity: 'error',
@@ -682,18 +745,14 @@ export default function PartsBoardPage() {
 
         setSaving(true);
         try {
-            await replaceComponent(
-                selectedPart.machine.name,
-                selectedPart.partKey,
-                dbTarget,
-                {
-                    partId: selectedPart.part.partId,
-                    runtimeLimit: selectedPart.part.limitHours
-                }
-            );
+            await replaceComponent(selectedPart.machine.name, 'production', {
+                partId: selectedPart.part.partId,
+                ...(selectedPart.kind === 'fixed' ? { partKey: selectedPart.partKey } : {}),
+                runtimeLimit: selectedPart.part.limitHours
+            });
             toast.current?.show({ severity: 'success', summary: 'Part replaced', life: 3000 });
             closeEdit();
-            await loadDashboard(true, dbTarget);
+            await loadDashboard(true);
         } catch (e) {
             toast.current?.show({
                 severity: 'error',
@@ -720,12 +779,121 @@ export default function PartsBoardPage() {
         });
     }, [sortedMachines, searchLower]);
 
+    const machineOptions = useMemo(
+        () => sortedMachines.map((m) => ({ label: m.name, value: m.name })),
+        [sortedMachines]
+    );
+
+    const addTargetMachine = useMemo(
+        () => (addMachineName ? machines.find((m) => m.name === addMachineName) ?? null : null),
+        [machines, addMachineName]
+    );
+
+    const addPartOptions = useMemo(() => {
+        if (!addTargetMachine) return [];
+        return [
+            ...COMPONENT_PART_OPTIONS.map((opt) => {
+                const registered = isComponentRegistered(addTargetMachine, opt.key);
+                return {
+                    label: registered ? `${opt.label} (registered)` : opt.label,
+                    value: opt.key,
+                    disabled: registered
+                };
+            }),
+            { label: 'Other (custom name…)', value: ADD_PART_CUSTOM, disabled: false }
+        ];
+    }, [addTargetMachine]);
+
+    const addPartAvailable = useMemo(() => {
+        if (!addTargetMachine || !addPartChoice) return false;
+        if (addPartChoice === ADD_PART_CUSTOM) {
+            const name = addCustomPartName.trim();
+            return name.length > 0 && name.length <= 20 && !isCustomPartNameTaken(addTargetMachine, name);
+        }
+        return !isComponentRegistered(addTargetMachine, addPartChoice);
+    }, [addTargetMachine, addPartChoice, addCustomPartName]);
+
+    const openAddComponent = () => {
+        const firstWithSlot =
+            sortedMachines.find((m) => missingComponentOptions(m).length > 0) ?? sortedMachines[0] ?? null;
+        const parts = firstWithSlot ? missingComponentOptions(firstWithSlot) : [];
+        const firstPart: ComponentPartOption | undefined = parts[0];
+
+        setAddMachineName(firstWithSlot?.name ?? null);
+        setAddPartChoice(firstPart?.key ?? ADD_PART_CUSTOM);
+        setAddCustomPartName('');
+        setAddLimitHours(firstPart?.defaultLimitHours ?? CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS);
+        setAddCompany(COMPONENT_DEFAULT_COMPANY);
+        setAddFactory(COMPONENT_DEFAULT_FACTORY);
+        setAddComponentOpen(true);
+    };
+
+    const onAddMachineChange = (name: string | null) => {
+        setAddMachineName(name);
+        const machine = name ? machines.find((m) => m.name === name) : null;
+        if (!machine) {
+            setAddPartChoice(null);
+            setAddCustomPartName('');
+            return;
+        }
+        const parts = missingComponentOptions(machine);
+        const first = parts[0];
+        setAddPartChoice(first?.key ?? ADD_PART_CUSTOM);
+        setAddCustomPartName('');
+        if (first) setAddLimitHours(first.defaultLimitHours);
+        else setAddLimitHours(CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS);
+    };
+
+    const onAddPartChange = (choice: AddPartChoice | null) => {
+        setAddPartChoice(choice);
+        if (choice === ADD_PART_CUSTOM) {
+            setAddLimitHours(CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS);
+            return;
+        }
+        const opt = choice ? componentOptionByKey(choice) : undefined;
+        if (opt) setAddLimitHours(opt.defaultLimitHours);
+    };
+
+    const handleAddComponent = async () => {
+        if (!addMachineName || !addPartChoice) return;
+        setAddSaving(true);
+        try {
+            if (addPartChoice === ADD_PART_CUSTOM) {
+                const name = addCustomPartName.trim();
+                if (!name) return;
+                await insertComponent(addMachineName, addLimitHours, 'production', {
+                    partType: name.toUpperCase(),
+                    company: addCompany.trim(),
+                    factory: addFactory.trim()
+                });
+            } else {
+                await insertComponent(addMachineName, addLimitHours, 'production', {
+                    partKey: addPartChoice,
+                    company: addCompany.trim(),
+                    factory: addFactory.trim()
+                });
+            }
+            toast.current?.show({ severity: 'success', summary: 'Component added', life: 3000 });
+            setAddComponentOpen(false);
+            await loadDashboard(true);
+        } catch (e) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Add failed',
+                detail: e instanceof Error ? e.message : undefined,
+                life: 5000
+            });
+        } finally {
+            setAddSaving(false);
+        }
+    };
+
     const lastSyncLabel = lastSync ? new Date(lastSync).toLocaleTimeString() : '—';
 
     const editTitle =
         selectedPart?.kind === 'roller'
             ? `${selectedPart.machine.name} · ${selectedPart.roller.displayName}`
-            : selectedPart?.kind === 'fixed'
+            : selectedPart?.kind === 'fixed' || selectedPart?.kind === 'custom'
               ? `${selectedPart.machine.name} · ${selectedPart.part.displayName}`
               : 'Edit';
 
@@ -734,10 +902,8 @@ export default function PartsBoardPage() {
             <Toast ref={toast} />
 
             <header className="pb-toolbar">
-                <span className="pb-toolbar__title">Parts monitoring</span>
-                <span className="pb-toolbar__meta">
-                    {rollerDbTargetLabel(dbTarget)} · {lastSyncLabel}
-                </span>
+                <span className="pb-toolbar__title">Component monitoring</span>
+                <span className="pb-toolbar__meta">{lastSyncLabel}</span>
                 <div className="pb-toolbar__actions">
                     <span className="p-input-icon-left">
                         <i className="pi pi-search" />
@@ -748,15 +914,13 @@ export default function PartsBoardPage() {
                             className="pb-search"
                         />
                     </span>
-                    <SelectButton
-                        value={dbTarget}
-                        options={DB_TARGET_OPTIONS}
-                        onChange={(e) => {
-                            const v = e.value as RollerDbTarget;
-                            if (v === 'local' || v === 'production') onDbTargetChange(v);
-                        }}
-                        optionLabel="label"
-                        optionValue="value"
+                    <Button
+                        icon="pi pi-plus"
+                        rounded
+                        outlined
+                        disabled={loading || machines.length === 0}
+                        onClick={openAddComponent}
+                        tooltip="Add component"
                     />
                     <Button
                         icon={autoRefresh ? 'pi pi-clock' : 'pi pi-pause'}
@@ -770,7 +934,7 @@ export default function PartsBoardPage() {
                         icon="pi pi-refresh"
                         rounded
                         loading={refreshing}
-                        onClick={() => loadDashboard(true, dbTarget)}
+                        onClick={() => loadDashboard(true)}
                         tooltip="Refresh"
                     />
                 </div>
@@ -796,6 +960,7 @@ export default function PartsBoardPage() {
                             onOpenMachine={() => openMachine(machine.name)}
                             onOpenRoller={(lr, key) => openMachine(machine.name, key)}
                             onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
+                            onOpenCustom={(part) => openCustomEdit(machine, part)}
                         />
                     ))}
                 </div>
@@ -842,10 +1007,12 @@ export default function PartsBoardPage() {
                             nowMs={nowMs}
                             highlightRollerKey={highlightRollerKey}
                             onEditFixed={(key, part) => openFixedEdit(fullscreenMachine, key, part)}
+                            onEditCustom={(part) => openCustomEdit(fullscreenMachine, part)}
                             onEditRoller={(roller) => openRollerEdit(fullscreenMachine, roller)}
                         />
                         <div className="pb-fs-footer">
-                            3 components + {fullscreenMachine.rollers.length} rollers
+                            {3 + fullscreenMachine.extraParts.length} components + {fullscreenMachine.rollers.length}{' '}
+                            rollers
                         </div>
                     </div>
                 ) : null}
@@ -895,7 +1062,7 @@ export default function PartsBoardPage() {
                         </div>
                     </>
                 )}
-                {selectedPart?.kind === 'fixed' && (
+                {selectedPart?.kind === 'fixed' || selectedPart?.kind === 'custom' ? (
                     <>
                         <dl className="pb-edit-dl">
                             <dt>Part</dt>
@@ -958,7 +1125,106 @@ export default function PartsBoardPage() {
                             />
                         </div>
                     </>
-                )}
+                ) : null}
+            </Dialog>
+
+            <Dialog
+                header="Add component"
+                visible={addComponentOpen}
+                style={{ width: '28rem' }}
+                onHide={() => setAddComponentOpen(false)}
+                dismissableMask
+            >
+                <div className="flex flex-column gap-3">
+                    <div>
+                        <label className="block mb-2 text-sm font-medium">Machine</label>
+                        <Dropdown
+                            value={addMachineName}
+                            options={machineOptions}
+                            onChange={(e) => onAddMachineChange(e.value as string | null)}
+                            placeholder="Select machine"
+                            className="w-full"
+                            filter
+                            filterPlaceholder="Search machine"
+                        />
+                    </div>
+                    <div>
+                        <label className="block mb-2 text-sm font-medium">Part</label>
+                        <Dropdown
+                            value={addPartChoice}
+                            options={addPartOptions}
+                            optionDisabled="disabled"
+                            onChange={(e) => onAddPartChange(e.value as AddPartChoice | null)}
+                            placeholder="Select part"
+                            className="w-full"
+                            disabled={!addTargetMachine}
+                        />
+                    </div>
+                    {addPartChoice === ADD_PART_CUSTOM ? (
+                        <div>
+                            <label className="block mb-2 text-sm font-medium">Part name</label>
+                            <InputText
+                                value={addCustomPartName}
+                                onChange={(e) => setAddCustomPartName(e.target.value)}
+                                placeholder="e.g. Bearing"
+                                maxLength={20}
+                                className="w-full"
+                            />
+                            {addCustomPartName.trim() &&
+                            addTargetMachine &&
+                            isCustomPartNameTaken(addTargetMachine, addCustomPartName) ? (
+                                <small className="text-color-secondary block mt-1">
+                                    This part name is already registered on this machine.
+                                </small>
+                            ) : null}
+                        </div>
+                    ) : null}
+                    <div className="grid grid-nogutter gap-3">
+                        <div className="col-6">
+                            <label className="block mb-2 text-sm font-medium">Company</label>
+                            <InputText
+                                value={addCompany}
+                                onChange={(e) => setAddCompany(e.target.value)}
+                                className="w-full"
+                            />
+                        </div>
+                        <div className="col-6">
+                            <label className="block mb-2 text-sm font-medium">Factory</label>
+                            <InputText
+                                value={addFactory}
+                                onChange={(e) => setAddFactory(e.target.value)}
+                                className="w-full"
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block mb-2 text-sm font-medium">Runtime limit (hours)</label>
+                        <InputNumber
+                            value={addLimitHours}
+                            onValueChange={(e) => setAddLimitHours(e.value ?? 0)}
+                            min={1}
+                            className="w-full"
+                        />
+                    </div>
+                    {addPartChoice !== ADD_PART_CUSTOM &&
+                    addPartOptions.filter((o) => o.value !== ADD_PART_CUSTOM && !o.disabled).length === 0 &&
+                    addMachineName ? (
+                        <Message
+                            severity="info"
+                            text="Standard parts are registered. Choose “Other (custom name…)” to add bearing or other parts."
+                        />
+                    ) : null}
+                    <div className="flex gap-2 justify-content-end">
+                        <Button label="Cancel" text onClick={() => setAddComponentOpen(false)} disabled={addSaving} />
+                        <Button
+                            label="Add"
+                            icon="pi pi-check"
+                            loading={addSaving}
+                            disabled={!addMachineName || !addPartAvailable || addLimitHours < 1}
+                            onClick={handleAddComponent}
+                        />
+                    </div>
+                </div>
             </Dialog>
         </div>
     );
