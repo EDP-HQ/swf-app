@@ -65,7 +65,7 @@ export const APP_NAV_SECTIONS: AppNavSection[] = [
         label: 'Parts',
         items: [
             {
-                label: 'Parts monitoring',
+                label: 'Component monitoring',
                 to: '/parts-board',
                 icon: 'pi pi-fw pi-th-large',
                 description: 'Machines, rollers, components — dashboard with alerts and edit.'

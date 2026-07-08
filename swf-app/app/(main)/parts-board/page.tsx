@@ -12,6 +12,7 @@ import { ProgressSpinner } from 'primereact/progressspinner';
 import { SelectButton } from 'primereact/selectbutton';
 import { Tag } from 'primereact/tag';
 import { Toast } from 'primereact/toast';
+import { Tooltip } from 'primereact/tooltip';
 import { CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS, GEARBOX_DEFAULT_LIMIT_HOURS, ROLLER_AUTO_REFRESH_MS, ROLLER_LIVE_TICK_MS } from '@/lib/roller-monitoring/constants';
 import { formatReplaceDt, formatRuntimeHms } from '@/lib/roller-monitoring/formatRuntime';
 import { RuntimeTimer } from '@/lib/roller-monitoring/RuntimeTimer';
@@ -48,6 +49,7 @@ import {
 import { insertComponent, replaceComponent, updateComponentRuntime, updateComponentRuntimeLimit } from '@/lib/roller-monitoring/componentsClient';
 import {
     getRollerDbTarget,
+    ROLLER_DEV_MODE_STORAGE_KEY,
     rollerDbTargetLabel,
     setRollerDbTarget,
     type RollerDbTarget
@@ -61,6 +63,11 @@ const DB_TARGET_OPTIONS: { label: string; value: RollerDbTarget }[] = [
     { label: 'LOCAL', value: 'local' },
     { label: 'PROD', value: 'production' }
 ];
+
+const DEV_PASSWORD = '11223344';
+
+const DEV_PASSWORD_HELP =
+    'Enter the developer password to unlock the local/production API toggle on this screen.';
 
 type LiveRoller = {
     roller: RollerRow;
@@ -524,6 +531,10 @@ export default function PartsBoardPage() {
     const [search, setSearch] = useState('');
     const [autoRefresh, setAutoRefresh] = useState(true);
     const [dbTarget, setDbTargetUi] = useState<RollerDbTarget>('production');
+    const [developerMode, setDeveloperMode] = useState(false);
+    const [devPasswordOpen, setDevPasswordOpen] = useState(false);
+    const [devPasswordInput, setDevPasswordInput] = useState('');
+    const [devPasswordError, setDevPasswordError] = useState<string | null>(null);
     const [fullscreenMachineName, setFullscreenMachineName] = useState<string | null>(null);
     const [highlightRollerKey, setHighlightRollerKey] = useState<string | null>(null);
     const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
@@ -627,10 +638,70 @@ export default function PartsBoardPage() {
     }, []);
 
     useEffect(() => {
+        try {
+            if (typeof window !== 'undefined' && sessionStorage.getItem(ROLLER_DEV_MODE_STORAGE_KEY) === '1') {
+                setDeveloperMode(true);
+            }
+        } catch {
+            /* ignore */
+        }
+    }, []);
+
+    useEffect(() => {
         setDbTargetUi(getRollerDbTarget());
         loadDashboard(false, getRollerDbTarget());
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        if (developerMode) {
+            setDbTargetUi(getRollerDbTarget());
+        }
+    }, [developerMode]);
+
+    const enableDeveloperMode = useCallback(() => {
+        try {
+            sessionStorage.setItem(ROLLER_DEV_MODE_STORAGE_KEY, '1');
+        } catch {
+            /* ignore */
+        }
+        setDeveloperMode(true);
+    }, []);
+
+    const disableDeveloperMode = useCallback(() => {
+        try {
+            sessionStorage.removeItem(ROLLER_DEV_MODE_STORAGE_KEY);
+        } catch {
+            /* ignore */
+        }
+        setDeveloperMode(false);
+        void loadDashboard(true, getRollerDbTarget());
+    }, [loadDashboard]);
+
+    const openDevPasswordDialog = useCallback(() => {
+        setDevPasswordInput('');
+        setDevPasswordError(null);
+        setDevPasswordOpen(true);
+    }, []);
+
+    const submitDevPassword = useCallback(() => {
+        if (devPasswordInput === DEV_PASSWORD) {
+            enableDeveloperMode();
+            setDevPasswordOpen(false);
+            setDevPasswordInput('');
+            setDevPasswordError(null);
+        } else {
+            setDevPasswordError('Incorrect password.');
+        }
+    }, [devPasswordInput, enableDeveloperMode]);
+
+    const onDevModeButtonClick = useCallback(() => {
+        if (developerMode) {
+            disableDeveloperMode();
+        } else {
+            openDevPasswordDialog();
+        }
+    }, [developerMode, disableDeveloperMode, openDevPasswordDialog]);
 
     useEffect(() => {
         if (!autoRefresh) return;
@@ -922,9 +993,10 @@ export default function PartsBoardPage() {
             <Toast ref={toast} />
 
             <header className="pb-toolbar">
-                <span className="pb-toolbar__title">Parts monitoring</span>
+                <span className="pb-toolbar__title">Component monitoring</span>
                 <span className="pb-toolbar__meta">
-                    {rollerDbTargetLabel(dbTarget)} · {lastSyncLabel}
+                    {developerMode ? `${rollerDbTargetLabel(dbTarget)} · ` : ''}
+                    {lastSyncLabel}
                 </span>
                 <div className="pb-toolbar__actions">
                     <span className="p-input-icon-left">
@@ -936,15 +1008,35 @@ export default function PartsBoardPage() {
                             className="pb-search"
                         />
                     </span>
-                    <SelectButton
-                        value={dbTarget}
-                        options={DB_TARGET_OPTIONS}
-                        onChange={(e) => {
-                            const v = e.value as RollerDbTarget;
-                            if (v === 'local' || v === 'production') onDbTargetChange(v);
-                        }}
-                        optionLabel="label"
-                        optionValue="value"
+                    {developerMode && (
+                        <SelectButton
+                            value={dbTarget}
+                            options={DB_TARGET_OPTIONS}
+                            onChange={(e) => {
+                                const v = e.value as RollerDbTarget;
+                                if (v === 'local' || v === 'production') onDbTargetChange(v);
+                            }}
+                            optionLabel="label"
+                            optionValue="value"
+                        />
+                    )}
+                    <Button
+                        id="pb-dev-btn"
+                        icon="pi pi-code"
+                        rounded
+                        outlined
+                        severity={developerMode ? 'secondary' : undefined}
+                        onClick={onDevModeButtonClick}
+                        aria-label={developerMode ? 'Exit developer mode' : 'Developer mode'}
+                    />
+                    <Tooltip
+                        target="#pb-dev-btn"
+                        content={
+                            developerMode
+                                ? 'Exit developer mode (hide LOCAL/PROD toggle)'
+                                : 'Developer mode — password required'
+                        }
+                        position="bottom"
                     />
                     <Button
                         icon="pi pi-plus"
@@ -1257,6 +1349,57 @@ export default function PartsBoardPage() {
                         />
                     </div>
                 </div>
+            </Dialog>
+
+            <Dialog
+                header="Developer tools"
+                visible={devPasswordOpen}
+                style={{ width: 'min(92vw, 24rem)' }}
+                onHide={() => setDevPasswordOpen(false)}
+                dismissableMask
+                footer={
+                    <div className="flex justify-content-end gap-2">
+                        <Button
+                            type="button"
+                            label="Cancel"
+                            className="p-button-text"
+                            onClick={() => setDevPasswordOpen(false)}
+                        />
+                        <Button
+                            type="button"
+                            label="Unlock"
+                            icon="pi pi-unlock"
+                            onClick={() => void submitDevPassword()}
+                        />
+                    </div>
+                }
+                draggable={false}
+                resizable={false}
+            >
+                <p className="mt-0 text-color-secondary line-height-3 mb-3">{DEV_PASSWORD_HELP}</p>
+                <label htmlFor="pb-dev-password" className="font-semibold block mb-2">
+                    Password
+                </label>
+                <InputText
+                    id="pb-dev-password"
+                    type="password"
+                    value={devPasswordInput}
+                    onChange={(e) => {
+                        setDevPasswordInput(e.target.value);
+                        setDevPasswordError(null);
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            void submitDevPassword();
+                        }
+                    }}
+                    className="w-full"
+                    autoFocus
+                />
+                {devPasswordError && (
+                    <Message severity="error" text={devPasswordError} className="w-full mt-3" />
+                )}
             </Dialog>
         </div>
     );

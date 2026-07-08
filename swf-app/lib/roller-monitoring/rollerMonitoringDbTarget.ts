@@ -7,6 +7,9 @@ export type RollerDbTarget = 'local' | 'production';
 
 const DB_TARGET_STORAGE_KEY = 'roller-monitor-db-target';
 
+/** sessionStorage flag — same pattern as bobbin monitoring developer mode. */
+export const ROLLER_DEV_MODE_STORAGE_KEY = 'component-monitor-dev-mode';
+
 /** Default: PROD (remote sfcwrdb) until user picks LOCAL. */
 export function getRollerDbTarget(): RollerDbTarget {
     if (typeof window === 'undefined') return 'production';
