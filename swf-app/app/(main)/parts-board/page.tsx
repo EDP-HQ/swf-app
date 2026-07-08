@@ -9,6 +9,7 @@ import { InputText } from 'primereact/inputtext';
 import { Message } from 'primereact/message';
 import { ProgressBar } from 'primereact/progressbar';
 import { ProgressSpinner } from 'primereact/progressspinner';
+import { SelectButton } from 'primereact/selectbutton';
 import { Tag } from 'primereact/tag';
 import { Toast } from 'primereact/toast';
 import { CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS, GEARBOX_DEFAULT_LIMIT_HOURS, ROLLER_AUTO_REFRESH_MS, ROLLER_LIVE_TICK_MS } from '@/lib/roller-monitoring/constants';
@@ -45,10 +46,21 @@ import {
     type ComponentPartOption
 } from '@/lib/roller-monitoring/componentCatalog';
 import { insertComponent, replaceComponent, updateComponentRuntime, updateComponentRuntimeLimit } from '@/lib/roller-monitoring/componentsClient';
+import {
+    getRollerDbTarget,
+    rollerDbTargetLabel,
+    setRollerDbTarget,
+    type RollerDbTarget
+} from '@/lib/roller-monitoring/rollerMonitoringDbTarget';
 import { computeRollerStatus, usagePct } from '@/lib/roller-monitoring/rollerStatus';
 import type { FixedPartRow, MachineDashboard, MachineFixedPartKey, PartHealthStatus, RollerRow } from '@/lib/roller-monitoring/types';
 import './parts-board.css';
 import './parts-board.fullscreen.css';
+
+const DB_TARGET_OPTIONS: { label: string; value: RollerDbTarget }[] = [
+    { label: 'LOCAL', value: 'local' },
+    { label: 'PROD', value: 'production' }
+];
 
 type LiveRoller = {
     roller: RollerRow;
@@ -511,6 +523,7 @@ export default function PartsBoardPage() {
     const [nowMs, setNowMs] = useState(Date.now());
     const [search, setSearch] = useState('');
     const [autoRefresh, setAutoRefresh] = useState(true);
+    const [dbTarget, setDbTargetUi] = useState<RollerDbTarget>('production');
     const [fullscreenMachineName, setFullscreenMachineName] = useState<string | null>(null);
     const [highlightRollerKey, setHighlightRollerKey] = useState<string | null>(null);
     const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
@@ -535,7 +548,7 @@ export default function PartsBoardPage() {
         syncEpochMsRef.current = syncEpochMs;
     }, [syncEpochMs]);
 
-    const loadDashboard = useCallback(async (silent = false) => {
+    const loadDashboard = useCallback(async (silent = false, target = getRollerDbTarget()) => {
         if (!silent) setLoading(true);
         else setRefreshing(true);
         setError(null);
@@ -543,7 +556,7 @@ export default function PartsBoardPage() {
             const prev = machinesRef.current;
             const syncMs = syncEpochMsRef.current;
             const saveNowMs = Date.now();
-            const data = await fetchRollerDashboard();
+            const data = await fetchRollerDashboard(target);
 
             const savedSecByPartId = new Map<string, number>();
             const savedRollerSecByBin = new Map<string, number>();
@@ -557,7 +570,7 @@ export default function PartsBoardPage() {
                     if (!snap.roller.rollerId && !snap.roller.binLocation) continue;
                     savedRollerSecByBin.set(snap.roller.binLocation, snap.runtimeSec);
                     saveTasks.push(
-                        updateRollerRuntime(snap.runtimeSec, 'production', {
+                        updateRollerRuntime(snap.runtimeSec, target, {
                             rollerId: snap.roller.rollerId,
                             binLocation: snap.roller.binLocation
                         })
@@ -570,7 +583,7 @@ export default function PartsBoardPage() {
                     if (!snap.part.partId) continue;
                     savedSecByPartId.set(snap.part.partId, snap.runtimeSec);
                     saveTasks.push(
-                        updateComponentRuntime(snap.runtimeSec, 'production', {
+                        updateComponentRuntime(snap.runtimeSec, target, {
                             partId: snap.part.partId,
                             ...(snap.partKey
                                 ? { machineName: oldM.name, partKey: snap.partKey }
@@ -614,13 +627,14 @@ export default function PartsBoardPage() {
     }, []);
 
     useEffect(() => {
-        loadDashboard(false);
+        setDbTargetUi(getRollerDbTarget());
+        loadDashboard(false, getRollerDbTarget());
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
         if (!autoRefresh) return;
-        const id = window.setInterval(() => loadDashboard(true), ROLLER_AUTO_REFRESH_MS);
+        const id = window.setInterval(() => loadDashboard(true, getRollerDbTarget()), ROLLER_AUTO_REFRESH_MS);
         return () => window.clearInterval(id);
     }, [autoRefresh, loadDashboard]);
 
@@ -636,6 +650,12 @@ export default function PartsBoardPage() {
         }, 300);
         return () => window.clearTimeout(t);
     }, [highlightRollerKey, fullscreenMachineName]);
+
+    const onDbTargetChange = (value: RollerDbTarget) => {
+        setDbTargetUi(value);
+        setRollerDbTarget(value);
+        loadDashboard(true, value);
+    };
 
     const fullscreenMachine = useMemo(
         () => (fullscreenMachineName ? machines.find((m) => m.name === fullscreenMachineName) ?? null : null),
@@ -679,10 +699,10 @@ export default function PartsBoardPage() {
             }
             setSaving(true);
             try {
-                await updateRollerRuntimeLimit(selectedPart.roller.rollerId, limitInput);
+                await updateRollerRuntimeLimit(selectedPart.roller.rollerId, limitInput, dbTarget);
                 toast.current?.show({ severity: 'success', summary: 'Limit saved', life: 3000 });
                 closeEdit();
-                await loadDashboard(true);
+                await loadDashboard(true, dbTarget);
             } catch (e) {
                 toast.current?.show({
                     severity: 'error',
@@ -698,7 +718,7 @@ export default function PartsBoardPage() {
 
         setSaving(true);
         try {
-            await updateComponentRuntimeLimit(limitInput, 'production', {
+            await updateComponentRuntimeLimit(limitInput, dbTarget, {
                 partId: selectedPart.part.partId,
                 ...(selectedPart.kind === 'fixed'
                     ? { machineName: selectedPart.machine.name, partKey: selectedPart.partKey }
@@ -706,7 +726,7 @@ export default function PartsBoardPage() {
             });
             toast.current?.show({ severity: 'success', summary: 'Limit saved', life: 3000 });
             closeEdit();
-            await loadDashboard(true);
+            await loadDashboard(true, dbTarget);
         } catch (e) {
             toast.current?.show({
                 severity: 'error',
@@ -726,10 +746,10 @@ export default function PartsBoardPage() {
             if (!selectedPart.roller.binLocation) return;
             setSaving(true);
             try {
-                await replaceRoller(selectedPart.roller.binLocation);
+                await replaceRoller(selectedPart.roller.binLocation, dbTarget);
                 toast.current?.show({ severity: 'success', summary: 'Roller replaced', life: 3000 });
                 closeEdit();
-                await loadDashboard(true);
+                await loadDashboard(true, dbTarget);
             } catch (e) {
                 toast.current?.show({
                     severity: 'error',
@@ -745,14 +765,14 @@ export default function PartsBoardPage() {
 
         setSaving(true);
         try {
-            await replaceComponent(selectedPart.machine.name, 'production', {
+            await replaceComponent(selectedPart.machine.name, dbTarget, {
                 partId: selectedPart.part.partId,
                 ...(selectedPart.kind === 'fixed' ? { partKey: selectedPart.partKey } : {}),
                 runtimeLimit: selectedPart.part.limitHours
             });
             toast.current?.show({ severity: 'success', summary: 'Part replaced', life: 3000 });
             closeEdit();
-            await loadDashboard(true);
+            await loadDashboard(true, dbTarget);
         } catch (e) {
             toast.current?.show({
                 severity: 'error',
@@ -861,13 +881,13 @@ export default function PartsBoardPage() {
             if (addPartChoice === ADD_PART_CUSTOM) {
                 const name = addCustomPartName.trim();
                 if (!name) return;
-                await insertComponent(addMachineName, addLimitHours, 'production', {
+                await insertComponent(addMachineName, addLimitHours, dbTarget, {
                     partType: name.toUpperCase(),
                     company: addCompany.trim(),
                     factory: addFactory.trim()
                 });
             } else {
-                await insertComponent(addMachineName, addLimitHours, 'production', {
+                await insertComponent(addMachineName, addLimitHours, dbTarget, {
                     partKey: addPartChoice,
                     company: addCompany.trim(),
                     factory: addFactory.trim()
@@ -875,7 +895,7 @@ export default function PartsBoardPage() {
             }
             toast.current?.show({ severity: 'success', summary: 'Component added', life: 3000 });
             setAddComponentOpen(false);
-            await loadDashboard(true);
+            await loadDashboard(true, dbTarget);
         } catch (e) {
             toast.current?.show({
                 severity: 'error',
@@ -902,8 +922,10 @@ export default function PartsBoardPage() {
             <Toast ref={toast} />
 
             <header className="pb-toolbar">
-                <span className="pb-toolbar__title">Component monitoring</span>
-                <span className="pb-toolbar__meta">{lastSyncLabel}</span>
+                <span className="pb-toolbar__title">Parts monitoring</span>
+                <span className="pb-toolbar__meta">
+                    {rollerDbTargetLabel(dbTarget)} · {lastSyncLabel}
+                </span>
                 <div className="pb-toolbar__actions">
                     <span className="p-input-icon-left">
                         <i className="pi pi-search" />
@@ -914,6 +936,16 @@ export default function PartsBoardPage() {
                             className="pb-search"
                         />
                     </span>
+                    <SelectButton
+                        value={dbTarget}
+                        options={DB_TARGET_OPTIONS}
+                        onChange={(e) => {
+                            const v = e.value as RollerDbTarget;
+                            if (v === 'local' || v === 'production') onDbTargetChange(v);
+                        }}
+                        optionLabel="label"
+                        optionValue="value"
+                    />
                     <Button
                         icon="pi pi-plus"
                         rounded
@@ -934,7 +966,7 @@ export default function PartsBoardPage() {
                         icon="pi pi-refresh"
                         rounded
                         loading={refreshing}
-                        onClick={() => loadDashboard(true)}
+                        onClick={() => loadDashboard(true, dbTarget)}
                         tooltip="Refresh"
                     />
                 </div>
