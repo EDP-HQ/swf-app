@@ -93,7 +93,6 @@
     border-radius: calc(10px * var(--pb-scale));
     background: var(--surface-0);
     overflow: hidden;
-    cursor: pointer;
     transition: box-shadow 0.15s ease, border-color 0.15s ease;
     display: flex;
     flex-direction: column;
@@ -140,6 +139,19 @@
     word-break: break-word;
     flex: 1;
     min-width: 0;
+}
+
+.pb-machine__head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    flex-shrink: 0;
+}
+
+.pb-machine__fs-btn {
+    width: 1.85rem !important;
+    height: 1.85rem !important;
+    padding: 0 !important;
 }
 
 .pb-machine__state {

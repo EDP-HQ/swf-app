@@ -270,3 +270,70 @@
     margin: 0;
     font-weight: 600;
 }
+
+.pb-fs-row--clickable {
+    cursor: pointer;
+}
+
+.pb-comp-history {
+    border-top: 1px solid var(--surface-border);
+    padding-top: 0.75rem;
+}
+
+.pb-comp-history__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.pb-comp-history__empty {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-color-secondary);
+}
+
+.pb-comp-history__loading {
+    display: flex;
+    justify-content: center;
+    padding: 1rem 0;
+}
+
+.pb-comp-history__wrap {
+    max-height: 14rem;
+    overflow: auto;
+    border: 1px solid var(--surface-border);
+    border-radius: 4px;
+}
+
+.pb-comp-history__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+}
+
+.pb-comp-history__table th,
+.pb-comp-history__table td {
+    padding: 0.45rem 0.55rem;
+    border-bottom: 1px solid var(--surface-border);
+    text-align: left;
+    white-space: nowrap;
+}
+
+.pb-comp-history__table th {
+    position: sticky;
+    top: 0;
+    background: var(--surface-100);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.pb-comp-history__table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.pb-comp-history__row--active td {
+    background: color-mix(in srgb, var(--green-50, #f0fdf4) 65%, transparent);
+}

@@ -1,10 +1,21 @@
 import { mergeRollerDashboard } from './mergeDashboard';
 import { applyComponentsToMachines } from './mergeComponents';
 import { fetchComponents } from './componentsClient';
+import { asRecordArray, rowNum, rowStr } from './parseRows';
 
 import { getRollerDbTarget, rollerNextApiPath, rollerSwfApiPath, type RollerApiEndpoint } from './rollerMonitoringDbTarget';
 
 import type { RollerDashboardData } from './types';
+
+export type RollerHistoryRow = {
+    rollerId: string;
+    binLocation: string;
+    replaceDt: string;
+    dismantleDt: string;
+    runtimeLimitHours: number;
+    runtimeHours: number;
+    isActive: boolean;
+};
 
 
 
@@ -264,6 +275,31 @@ export async function updateRollerRuntime(
         },
         target
     );
+}
+
+function rollerHistoryFromRow(row: Record<string, unknown>): RollerHistoryRow {
+    const runtimeSec = rowNum(row, 'RUNTIME_SEC');
+    return {
+        rollerId: rowStr(row, 'ROLLER_ID'),
+        binLocation: rowStr(row, 'BIN_LOCATION_CD'),
+        replaceDt: rowStr(row, 'Start_DT', 'START_DT'),
+        dismantleDt: rowStr(row, 'REPLACE_DT'),
+        runtimeLimitHours: rowNum(row, 'RUNTIME_LIMIT_HOUR'),
+        runtimeHours: runtimeSec / 3600,
+        isActive: false
+    };
+}
+
+export async function fetchRollerHistory(
+    binLocation: string,
+    target = getRollerDbTarget()
+): Promise<RollerHistoryRow[]> {
+    const body = await fetchRollerEndpoint<unknown>('history', undefined, target);
+    const bin = binLocation.trim();
+    return asRecordArray(body)
+        .filter((row) => rowStr(row, 'BIN_LOCATION_CD') === bin)
+        .map(rollerHistoryFromRow)
+        .sort((a, b) => (b.replaceDt || '').localeCompare(a.replaceDt || ''));
 }
 
 export async function replaceRoller(binLocation: string, target = getRollerDbTarget()): Promise<void> {

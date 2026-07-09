@@ -11,9 +11,9 @@ export function formatRuntimeHms(hours: number): string {
 }
 
 export function formatReplaceDt(value: string | null | undefined): string {
-    if (!value || value === 'N/A') return 'N/A';
-    const raw = String(value).split('T')[0].replace('Z', '');
-    const d = new Date(raw);
+    if (!value || value === 'N/A') return '—';
+    const normalized = String(value).trim().replace(' ', 'T').replace('Z', '');
+    const d = new Date(normalized);
     if (Number.isNaN(d.getTime())) return String(value);
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');

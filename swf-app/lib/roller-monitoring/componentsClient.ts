@@ -1,9 +1,27 @@
 import { getRollerDbTarget, type RollerDbTarget } from './rollerMonitoringDbTarget';
 import { componentOptionByKey } from './componentCatalog';
 import { fixedPartKeyToSeq } from './machineParts';
+import { asRecordArray, rowNum, rowStr } from './parseRows';
 import type { MachineFixedPartKey } from './types';
 
-export type ComponentsApiEndpoint = 'select' | 'replace' | 'updateruntime' | 'updateruntimelimit' | 'insert';
+export type ComponentsApiEndpoint =
+    | 'select'
+    | 'history'
+    | 'replace'
+    | 'updateruntime'
+    | 'updateruntimelimit'
+    | 'insert';
+
+export type ComponentHistoryRow = {
+    partId: string;
+    partSeq: number;
+    partType: string;
+    replaceDt: string;
+    dismantleDt: string;
+    runtimeLimitHours: number;
+    runtimeHours: number;
+    isActive: boolean;
+};
 
 const DEFAULT_SWF_API = 'http://127.0.0.1:3200';
 
@@ -87,6 +105,62 @@ export async function fetchComponents(
     }
 
     return body;
+}
+
+function historyRowFromRecord(row: Record<string, unknown>): ComponentHistoryRow {
+    const runtimeSec = rowNum(row, 'RUNTIME_SEC');
+    return {
+        partId: rowStr(row, 'PART_ID'),
+        partSeq: rowNum(row, 'PART_SEQ'),
+        partType: rowStr(row, 'PART_TYPE'),
+        replaceDt: rowStr(row, 'Start_DT', 'START_DT'),
+        dismantleDt: rowStr(row, 'REPLACE_DT'),
+        runtimeLimitHours: rowNum(row, 'RUNTIME_LIMIT_HOUR'),
+        runtimeHours: runtimeSec / 3600,
+        isActive: false
+    };
+}
+
+export async function fetchComponentHistory(
+    machineName: string,
+    target = getRollerDbTarget(),
+    options?: { partType?: string }
+): Promise<ComponentHistoryRow[]> {
+    const url = `${resolveComponentsUrl('history', target)}`;
+
+    let res: Response;
+    try {
+        res = await fetch(url, {
+            cache: 'no-store',
+            headers: { Accept: 'application/json' }
+        });
+    } catch (e) {
+        const direct = directApiBase();
+        const hint = direct
+            ? `Cannot reach swf-api at ${direct}. Start swf-api (port 3200).`
+            : 'Cannot reach API. Start swf-api and swf-app, or set NEXT_PUBLIC_SWF_API_URL in .env.local.';
+        const detail = e instanceof Error ? e.message : 'Network error';
+        throw new Error(`${hint} (${detail})`);
+    }
+
+    let body: unknown = null;
+    try {
+        body = await res.json();
+    } catch {
+        body = null;
+    }
+
+    if (!res.ok) {
+        throw new Error(parseErrorMessage(body, res.status));
+    }
+
+    const machine = machineName.trim();
+    const partType = options?.partType?.trim().toUpperCase();
+    return asRecordArray(body)
+        .filter((row) => rowStr(row, 'MACHINE_NM', 'MACHINE_NAME') === machine)
+        .filter((row) => !partType || rowStr(row, 'PART_TYPE').toUpperCase() === partType)
+        .map(historyRowFromRecord)
+        .sort((a, b) => (b.replaceDt || '').localeCompare(a.replaceDt || ''));
 }
 
 async function postComponentsEndpoint<T = unknown>(

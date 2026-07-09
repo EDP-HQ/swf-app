@@ -30,9 +30,11 @@ import {
 } from '@/lib/roller-monitoring/machineRollers';
 import {
     fetchRollerDashboard,
+    fetchRollerHistory,
     replaceRoller,
     updateRollerRuntime,
-    updateRollerRuntimeLimit
+    updateRollerRuntimeLimit,
+    type RollerHistoryRow
 } from '@/lib/roller-monitoring/rollerClient';
 import {
     ADD_PART_CUSTOM,
@@ -46,7 +48,7 @@ import {
     type AddPartChoice,
     type ComponentPartOption
 } from '@/lib/roller-monitoring/componentCatalog';
-import { insertComponent, replaceComponent, updateComponentRuntime, updateComponentRuntimeLimit } from '@/lib/roller-monitoring/componentsClient';
+import { insertComponent, replaceComponent, updateComponentRuntime, updateComponentRuntimeLimit, fetchComponentHistory, type ComponentHistoryRow } from '@/lib/roller-monitoring/componentsClient';
 import {
     getRollerDbTarget,
     ROLLER_DEV_MODE_STORAGE_KEY,
@@ -136,22 +138,159 @@ function UsageCell({ pct }: { pct: number }) {
     );
 }
 
+function ComponentDetailButton({ disabled, onClick }: { disabled?: boolean; onClick: () => void }) {
+    return (
+        <Button
+            icon="pi pi-info-circle"
+            rounded
+            text
+            size="small"
+            severity="info"
+            aria-label="Component details"
+            tooltip="Details"
+            disabled={disabled}
+            onClick={(e) => {
+                e.stopPropagation();
+                onClick();
+            }}
+        />
+    );
+}
+
+function ComponentHistoryTable({
+    rows,
+    loading,
+    error
+}: {
+    rows: ComponentHistoryRow[];
+    loading: boolean;
+    error: string | null;
+}) {
+    if (loading) {
+        return (
+            <div className="pb-comp-history__loading">
+                <ProgressSpinner style={{ width: '1.75rem', height: '1.75rem' }} />
+            </div>
+        );
+    }
+
+    if (error) {
+        return <Message severity="warn" text={error} className="w-full" />;
+    }
+
+    if (rows.length === 0) {
+        return <p className="pb-comp-history__empty">No replace history for this component.</p>;
+    }
+
+    return (
+        <div className="pb-comp-history__wrap">
+            <table className="pb-comp-history__table">
+                <thead>
+                    <tr>
+                        <th>Part ID</th>
+                        <th>Seq</th>
+                        <th>Installed</th>
+                        <th>Removed</th>
+                        <th>Runtime</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((row) => (
+                        <tr key={row.partId} className={row.isActive ? 'pb-comp-history__row--active' : ''}>
+                            <td className="pb-fs-mono">{row.partId}</td>
+                            <td className="pb-fs-col--center">{row.partSeq || '—'}</td>
+                            <td>{formatReplaceDt(row.replaceDt)}</td>
+                            <td>{row.isActive ? '—' : formatReplaceDt(row.dismantleDt)}</td>
+                            <td>{formatRuntimeHms(row.runtimeHours)}</td>
+                            <td>
+                                <Tag
+                                    value={row.isActive ? 'Active' : 'Removed'}
+                                    severity={row.isActive ? 'success' : 'secondary'}
+                                    rounded
+                                />
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+function RollerHistoryTable({
+    rows,
+    loading,
+    error
+}: {
+    rows: RollerHistoryRow[];
+    loading: boolean;
+    error: string | null;
+}) {
+    if (loading) {
+        return (
+            <div className="pb-comp-history__loading">
+                <ProgressSpinner style={{ width: '1.75rem', height: '1.75rem' }} />
+            </div>
+        );
+    }
+
+    if (error) {
+        return <Message severity="warn" text={error} className="w-full" />;
+    }
+
+    if (rows.length === 0) {
+        return <p className="pb-comp-history__empty">No replace history for this roller slot.</p>;
+    }
+
+    return (
+        <div className="pb-comp-history__wrap">
+            <table className="pb-comp-history__table">
+                <thead>
+                    <tr>
+                        <th>Roller ID</th>
+                        <th>Installed</th>
+                        <th>Removed</th>
+                        <th>Runtime</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((row) => (
+                        <tr key={row.rollerId || row.replaceDt} className={row.isActive ? 'pb-comp-history__row--active' : ''}>
+                            <td className="pb-fs-mono">{row.rollerId || '—'}</td>
+                            <td>{formatReplaceDt(row.replaceDt)}</td>
+                            <td>{row.isActive ? '—' : formatReplaceDt(row.dismantleDt)}</td>
+                            <td>{formatRuntimeHms(row.runtimeHours)}</td>
+                            <td>
+                                <Tag
+                                    value={row.isActive ? 'Active' : 'Removed'}
+                                    severity={row.isActive ? 'success' : 'secondary'}
+                                    rounded
+                                />
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
 function MachineFullscreenView({
     machine,
     syncEpochMs,
     nowMs,
     highlightRollerKey,
-    onEditFixed,
-    onEditCustom,
-    onEditRoller
+    onOpenComponentDetail,
+    onOpenRollerDetail
 }: {
     machine: MachineDashboard;
     syncEpochMs: number;
     nowMs: number;
     highlightRollerKey: string | null;
-    onEditFixed: (partKey: MachineFixedPartKey, part: FixedPartRow) => void;
-    onEditCustom: (part: FixedPartRow) => void;
-    onEditRoller: (roller: RollerRow) => void;
+    onOpenComponentDetail: (partKey: MachineFixedPartKey | null, part: FixedPartRow) => void;
+    onOpenRollerDetail: (roller: RollerRow) => void;
 }) {
     const standardRows: { key: MachineFixedPartKey; part: FixedPartRow }[] = [
         { key: 'gearbox', part: machine.gearbox },
@@ -195,7 +334,7 @@ function MachineFullscreenView({
                                 <th>Usage</th>
                                 <th>Replaced</th>
                                 <th>Status</th>
-                                <th className="pb-fs-th--center" aria-label="Edit" />
+                                <th className="pb-fs-th--center" aria-label="Details" />
                             </tr>
                         </thead>
                         <tbody>
@@ -204,7 +343,11 @@ function MachineFullscreenView({
                                 const pct = usagePct(rt, part.limitHours);
                                 const status = liveFixedPartStatus(part, machine, syncEpochMs, nowMs);
                                 return (
-                                    <tr key={key} className={rowStatusClass(status)}>
+                                    <tr
+                                        key={key}
+                                        className={`${rowStatusClass(status)} ${part.partId ? 'pb-fs-row--clickable' : ''}`}
+                                        onClick={() => part.partId && onOpenComponentDetail(key, part)}
+                                    >
                                         <td className="pb-fs-col pb-fs-col--num pb-fs-col--center">{part.partSeq ?? '—'}</td>
                                         <td className="pb-fs-col pb-fs-col--part font-medium">{part.displayName}</td>
                                         <td className="pb-fs-col pb-fs-col--part-id pb-fs-mono">{part.partId || '—'}</td>
@@ -223,14 +366,9 @@ function MachineFullscreenView({
                                             <Tag value={status} severity={statusSeverity(status)} rounded />
                                         </td>
                                         <td className="pb-fs-col pb-fs-col--edit pb-fs-col--center">
-                                            <Button
-                                                icon="pi pi-pencil"
-                                                rounded
-                                                text
-                                                size="small"
-                                                aria-label="Edit"
-                                                tooltip="Edit"
-                                                onClick={() => onEditFixed(key, part)}
+                                            <ComponentDetailButton
+                                                disabled={!part.partId}
+                                                onClick={() => onOpenComponentDetail(key, part)}
                                             />
                                         </td>
                                     </tr>
@@ -242,7 +380,11 @@ function MachineFullscreenView({
                                 const pct = usagePct(rt, part.limitHours);
                                 const status = liveFixedPartStatus(part, machine, syncEpochMs, nowMs);
                                 return (
-                                    <tr key={rowKey} className={rowStatusClass(status)}>
+                                    <tr
+                                        key={rowKey}
+                                        className={`${rowStatusClass(status)} ${part.partId ? 'pb-fs-row--clickable' : ''}`}
+                                        onClick={() => part.partId && onOpenComponentDetail(null, part)}
+                                    >
                                         <td className="pb-fs-col pb-fs-col--num pb-fs-col--center">{part.partSeq ?? '—'}</td>
                                         <td className="pb-fs-col pb-fs-col--part font-medium">{part.displayName}</td>
                                         <td className="pb-fs-col pb-fs-col--part-id pb-fs-mono">{part.partId || '—'}</td>
@@ -261,14 +403,9 @@ function MachineFullscreenView({
                                             <Tag value={status} severity={statusSeverity(status)} rounded />
                                         </td>
                                         <td className="pb-fs-col pb-fs-col--edit pb-fs-col--center">
-                                            <Button
-                                                icon="pi pi-pencil"
-                                                rounded
-                                                text
-                                                size="small"
-                                                aria-label="Edit"
-                                                tooltip="Edit"
-                                                onClick={() => onEditCustom(part)}
+                                            <ComponentDetailButton
+                                                disabled={!part.partId}
+                                                onClick={() => onOpenComponentDetail(null, part)}
                                             />
                                         </td>
                                     </tr>
@@ -307,7 +444,7 @@ function MachineFullscreenView({
                                 <th>Usage</th>
                                 <th>Replaced</th>
                                 <th>Status</th>
-                                <th className="pb-fs-th--center" aria-label="Edit" />
+                                <th className="pb-fs-th--center" aria-label="Details" />
                             </tr>
                         </thead>
                         <tbody>
@@ -316,11 +453,13 @@ function MachineFullscreenView({
                                 const pct = usagePct(rt, roller.limitHours);
                                 const status = computeRollerStatus(rt, roller.limitHours);
                                 const key = rollerRowKey(machine.name, roller, index);
+                                const canOpen = Boolean(roller.binLocation);
                                 return (
                                     <tr
                                         key={key}
                                         id={key}
-                                        className={`${rowStatusClass(status)} ${highlightRollerKey === key ? 'pb-fs-row--highlight' : ''}`}
+                                        className={`${rowStatusClass(status)} ${highlightRollerKey === key ? 'pb-fs-row--highlight' : ''} ${canOpen ? 'pb-fs-row--clickable' : ''}`}
+                                        onClick={() => canOpen && onOpenRollerDetail(roller)}
                                     >
                                         <td className="pb-fs-col pb-fs-col--num pb-fs-col--center">{index + 1}</td>
                                         <td className="pb-fs-col pb-fs-col--bin pb-fs-mono">{roller.binLocation || '—'}</td>
@@ -339,14 +478,9 @@ function MachineFullscreenView({
                                             <Tag value={status} severity={statusSeverity(status)} rounded />
                                         </td>
                                         <td className="pb-fs-col pb-fs-col--edit pb-fs-col--center">
-                                            <Button
-                                                icon="pi pi-pencil"
-                                                rounded
-                                                text
-                                                size="small"
-                                                aria-label="Edit"
-                                                tooltip="Edit"
-                                                onClick={() => onEditRoller(roller)}
+                                            <ComponentDetailButton
+                                                disabled={!canOpen}
+                                                onClick={() => onOpenRollerDetail(roller)}
                                             />
                                         </td>
                                     </tr>
@@ -414,7 +548,10 @@ function RollerTile({ live, onSelect }: { live: LiveRoller; onSelect: () => void
             type="button"
             className={`pb-tile pb-tile--${status.toLowerCase()} ${ticking ? 'pb-tile--spin' : ''}`}
             style={{ '--pb-tile-fill': barColor(pct) } as React.CSSProperties}
-            onClick={onSelect}
+            onClick={(e) => {
+                e.stopPropagation();
+                onSelect();
+            }}
             title={`${roller.displayName} · ${pct}% · ${formatRuntimeHms(runtimeHours)} · ${ticking ? 'Working' : 'Idle'}`}
         >
             <span className="pb-tile__meter" aria-hidden>
@@ -432,7 +569,7 @@ function MachineCard({
     syncEpochMs,
     nowMs,
     search,
-    onOpenMachine,
+    onOpenFullscreen,
     onOpenRoller,
     onOpenFixed,
     onOpenCustom
@@ -441,8 +578,8 @@ function MachineCard({
     syncEpochMs: number;
     nowMs: number;
     search: string;
-    onOpenMachine: () => void;
-    onOpenRoller: (live: LiveRoller, key: string) => void;
+    onOpenFullscreen: () => void;
+    onOpenRoller: (live: LiveRoller) => void;
     onOpenFixed: (partKey: MachineFixedPartKey, part: FixedPartRow) => void;
     onOpenCustom: (part: FixedPartRow) => void;
 }) {
@@ -455,17 +592,29 @@ function MachineCard({
     const cardTone = machine.running ? 'run' : 'idle';
 
     return (
-        <article className={`pb-machine pb-machine--${cardTone}`} onClick={onOpenMachine}>
+        <article className={`pb-machine pb-machine--${cardTone}`}>
             <header className="pb-machine__head">
                 <h3 className="pb-machine__name">{machine.name}</h3>
-                <span className={`pb-machine__state ${machine.running ? 'pb-machine__state--run' : ''}`}>
-                    <i className={`pi ${machine.running ? 'pi-play-circle' : 'pi-stop-circle'}`} />
-                    {machine.running ? 'Run' : 'Stop'}
-                </span>
+                <div className="pb-machine__head-actions">
+                    <Button
+                        icon="pi pi-window-maximize"
+                        rounded
+                        text
+                        size="small"
+                        className="pb-machine__fs-btn"
+                        aria-label="Full screen"
+                        tooltip="Full screen"
+                        onClick={onOpenFullscreen}
+                    />
+                    <span className={`pb-machine__state ${machine.running ? 'pb-machine__state--run' : ''}`}>
+                        <i className={`pi ${machine.running ? 'pi-play-circle' : 'pi-stop-circle'}`} />
+                        {machine.running ? 'Run' : 'Stop'}
+                    </span>
+                </div>
             </header>
 
             <div className="pb-machine__body">
-                <div className="pb-machine__fixed" onClick={(e) => e.stopPropagation()}>
+                <div className="pb-machine__fixed">
                     <FixedPartTile
                         label="Gearbox"
                         shortLabel="Gearbox"
@@ -508,11 +657,10 @@ function MachineCard({
                     ))}
                 </div>
 
-                <div className="pb-machine__tiles" onClick={(e) => e.stopPropagation()}>
-                {liveRollers.map((lr, i) => {
-                    const key = rollerRowKey(machine.name, lr.roller, machine.rollers.indexOf(lr.roller));
-                    return <RollerTile key={key} live={lr} onSelect={() => onOpenRoller(lr, key)} />;
-                })}
+                <div className="pb-machine__tiles">
+                {liveRollers.map((lr) => (
+                    <RollerTile key={rollerRowKey(machine.name, lr.roller, machine.rollers.indexOf(lr.roller))} live={lr} onSelect={() => onOpenRoller(lr)} />
+                ))}
                 </div>
             </div>
         </article>
@@ -548,6 +696,12 @@ export default function PartsBoardPage() {
     const [addCompany, setAddCompany] = useState(COMPONENT_DEFAULT_COMPANY);
     const [addFactory, setAddFactory] = useState(COMPONENT_DEFAULT_FACTORY);
     const [addLimitHours, setAddLimitHours] = useState(GEARBOX_DEFAULT_LIMIT_HOURS);
+    const [componentHistory, setComponentHistory] = useState<ComponentHistoryRow[]>([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyError, setHistoryError] = useState<string | null>(null);
+    const [rollerHistory, setRollerHistory] = useState<RollerHistoryRow[]>([]);
+    const [rollerHistoryLoading, setRollerHistoryLoading] = useState(false);
+    const [rollerHistoryError, setRollerHistoryError] = useState<string | null>(null);
     const machinesRef = useRef<MachineDashboard[]>([]);
     const syncEpochMsRef = useRef(Date.now());
 
@@ -728,6 +882,40 @@ export default function PartsBoardPage() {
         loadDashboard(true, value);
     };
 
+    const loadComponentHistory = useCallback(
+        async (machineName: string, partType: string, target = dbTarget) => {
+            setHistoryLoading(true);
+            setHistoryError(null);
+            try {
+                const rows = await fetchComponentHistory(machineName, target, { partType });
+                setComponentHistory(rows);
+            } catch (e) {
+                setComponentHistory([]);
+                setHistoryError(e instanceof Error ? e.message : 'Failed to load history');
+            } finally {
+                setHistoryLoading(false);
+            }
+        },
+        [dbTarget]
+    );
+
+    const loadRollerHistory = useCallback(
+        async (binLocation: string, target = dbTarget) => {
+            setRollerHistoryLoading(true);
+            setRollerHistoryError(null);
+            try {
+                const rows = await fetchRollerHistory(binLocation, target);
+                setRollerHistory(rows);
+            } catch (e) {
+                setRollerHistory([]);
+                setRollerHistoryError(e instanceof Error ? e.message : 'Failed to load history');
+            } finally {
+                setRollerHistoryLoading(false);
+            }
+        },
+        [dbTarget]
+    );
+
     const fullscreenMachine = useMemo(
         () => (fullscreenMachineName ? machines.find((m) => m.name === fullscreenMachineName) ?? null : null),
         [machines, fullscreenMachineName]
@@ -758,7 +946,54 @@ export default function PartsBoardPage() {
         setLimitInput(part.limitHours);
     };
 
-    const closeEdit = () => setSelectedPart(null);
+    const openComponentDetail = (
+        machine: MachineDashboard,
+        partKey: MachineFixedPartKey | null,
+        part: FixedPartRow
+    ) => {
+        if (!part.partId) return;
+        if (partKey) openFixedEdit(machine, partKey, part);
+        else openCustomEdit(machine, part);
+    };
+
+    useEffect(() => {
+        if (!selectedPart || selectedPart.kind === 'roller') {
+            setComponentHistory([]);
+            setHistoryError(null);
+            setHistoryLoading(false);
+            if (!selectedPart || selectedPart.kind !== 'roller') return;
+
+            const bin = selectedPart.roller.binLocation;
+            if (!bin) {
+                setRollerHistory([]);
+                setRollerHistoryError(null);
+                return;
+            }
+            void loadRollerHistory(bin);
+            return;
+        }
+
+        setRollerHistory([]);
+        setRollerHistoryError(null);
+        setRollerHistoryLoading(false);
+
+        const partType = selectedPart.part.partType || formatPartTypeLabel(selectedPart.part);
+        if (!selectedPart.part.partId || !partType) {
+            setComponentHistory([]);
+            setHistoryError(null);
+            return;
+        }
+
+        void loadComponentHistory(selectedPart.machine.name, partType);
+    }, [selectedPart, loadComponentHistory, loadRollerHistory]);
+
+    const closeEdit = () => {
+        setSelectedPart(null);
+        setComponentHistory([]);
+        setHistoryError(null);
+        setRollerHistory([]);
+        setRollerHistoryError(null);
+    };
 
     const handleSaveLimit = async () => {
         if (!selectedPart) return;
@@ -796,6 +1031,10 @@ export default function PartsBoardPage() {
                     : {})
             });
             toast.current?.show({ severity: 'success', summary: 'Limit saved', life: 3000 });
+            const partType = selectedPart.part.partType || formatPartTypeLabel(selectedPart.part);
+            if (partType) {
+                await loadComponentHistory(selectedPart.machine.name, partType);
+            }
             closeEdit();
             await loadDashboard(true, dbTarget);
         } catch (e) {
@@ -1081,8 +1320,8 @@ export default function PartsBoardPage() {
                             syncEpochMs={syncEpochMs}
                             nowMs={nowMs}
                             search={searchLower}
-                            onOpenMachine={() => openMachine(machine.name)}
-                            onOpenRoller={(lr, key) => openMachine(machine.name, key)}
+                            onOpenFullscreen={() => openMachine(machine.name)}
+                            onOpenRoller={(lr) => openRollerEdit(machine, lr.roller)}
                             onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
                             onOpenCustom={(part) => openCustomEdit(machine, part)}
                         />
@@ -1130,9 +1369,8 @@ export default function PartsBoardPage() {
                             syncEpochMs={syncEpochMs}
                             nowMs={nowMs}
                             highlightRollerKey={highlightRollerKey}
-                            onEditFixed={(key, part) => openFixedEdit(fullscreenMachine, key, part)}
-                            onEditCustom={(part) => openCustomEdit(fullscreenMachine, part)}
-                            onEditRoller={(roller) => openRollerEdit(fullscreenMachine, roller)}
+                            onOpenComponentDetail={(key, part) => openComponentDetail(fullscreenMachine, key, part)}
+                            onOpenRollerDetail={(roller) => openRollerEdit(fullscreenMachine, roller)}
                         />
                         <div className="pb-fs-footer">
                             {3 + fullscreenMachine.extraParts.length} components + {fullscreenMachine.rollers.length}{' '}
@@ -1142,14 +1380,37 @@ export default function PartsBoardPage() {
                 ) : null}
             </Dialog>
 
-            <Dialog header={editTitle} visible={selectedPart !== null} style={{ width: '26rem' }} onHide={closeEdit} dismissableMask>
+            <Dialog
+                header={editTitle}
+                visible={selectedPart !== null}
+                style={{
+                    width:
+                        selectedPart?.kind === 'roller' ||
+                        selectedPart?.kind === 'fixed' ||
+                        selectedPart?.kind === 'custom'
+                            ? 'min(92vw, 40rem)'
+                            : '26rem'
+                }}
+                onHide={closeEdit}
+                dismissableMask
+            >
                 {selectedPart?.kind === 'roller' && (
                     <>
                         <dl className="pb-edit-dl">
+                            <dt>Machine</dt>
+                            <dd>{selectedPart.machine.name}</dd>
                             <dt>Roller</dt>
                             <dd>{selectedPart.roller.displayName}</dd>
+                            <dt>Roller ID</dt>
+                            <dd className="pb-fs-mono">{selectedPart.roller.rollerId || '—'}</dd>
                             <dt>Bin</dt>
-                            <dd>{selectedPart.roller.binLocation || '—'}</dd>
+                            <dd className="pb-fs-mono">{selectedPart.roller.binLocation || '—'}</dd>
+                            <dt>Description</dt>
+                            <dd>{selectedPart.roller.description || '—'}</dd>
+                            <dt>Installed</dt>
+                            <dd>{formatReplaceDt(selectedPart.roller.replaceDt)}</dd>
+                            <dt>Working</dt>
+                            <dd>{selectedPart.roller.isActive ? 'Yes' : 'No'}</dd>
                             <dt>Runtime</dt>
                             <dd>
                                 {formatRuntimeHms(
@@ -1160,28 +1421,78 @@ export default function PartsBoardPage() {
                             <dt>Status</dt>
                             <dd>
                                 <Tag
-                                    value={selectedPart.roller.status}
-                                    severity={statusSeverity(selectedPart.roller.status)}
+                                    value={computeRollerStatus(
+                                        liveRollerRuntimeHours(
+                                            selectedPart.roller,
+                                            selectedPart.machine,
+                                            syncEpochMs,
+                                            nowMs
+                                        ),
+                                        selectedPart.roller.limitHours
+                                    )}
+                                    severity={statusSeverity(
+                                        computeRollerStatus(
+                                            liveRollerRuntimeHours(
+                                                selectedPart.roller,
+                                                selectedPart.machine,
+                                                syncEpochMs,
+                                                nowMs
+                                            ),
+                                            selectedPart.roller.limitHours
+                                        )
+                                    )}
                                     rounded
                                 />
                             </dd>
                         </dl>
-                        <label className="block mb-2 text-sm font-medium">Limit (hours)</label>
+                        <label className="block mb-2 text-sm font-medium">Runtime limit (hours)</label>
                         <InputNumber
                             value={limitInput}
                             onValueChange={(e) => setLimitInput(e.value ?? 0)}
                             min={1}
                             className="w-full mb-3"
+                            disabled={!selectedPart.roller.rollerId}
                         />
-                        <div className="flex gap-2">
-                            <Button icon="pi pi-save" loading={saving} onClick={handleSaveLimit} tooltip="Save limit" />
+                        <div className="flex gap-2 mb-4">
+                            <Button
+                                icon="pi pi-save"
+                                label="Save limit"
+                                loading={saving}
+                                onClick={handleSaveLimit}
+                                disabled={!selectedPart.roller.rollerId}
+                            />
                             <Button
                                 icon="pi pi-replay"
+                                label="Replace"
                                 severity="danger"
                                 outlined
                                 loading={saving}
                                 onClick={handleReplace}
-                                tooltip="Replace"
+                                disabled={!selectedPart.roller.binLocation}
+                            />
+                        </div>
+                        <div className="pb-comp-history">
+                            <div className="pb-comp-history__head">
+                                <span className="font-semibold text-sm">Replace history</span>
+                                <Button
+                                    icon="pi pi-refresh"
+                                    rounded
+                                    text
+                                    size="small"
+                                    loading={rollerHistoryLoading}
+                                    disabled={!selectedPart.roller.binLocation}
+                                    onClick={() => {
+                                        if (selectedPart.roller.binLocation) {
+                                            void loadRollerHistory(selectedPart.roller.binLocation);
+                                        }
+                                    }}
+                                    aria-label="Refresh history"
+                                />
+                            </div>
+                            <RollerHistoryTable
+                                rows={rollerHistory}
+                                loading={rollerHistoryLoading}
+                                error={rollerHistoryError}
                             />
                         </div>
                     </>
@@ -1189,13 +1500,17 @@ export default function PartsBoardPage() {
                 {selectedPart?.kind === 'fixed' || selectedPart?.kind === 'custom' ? (
                     <>
                         <dl className="pb-edit-dl">
+                            <dt>Machine</dt>
+                            <dd>{selectedPart.machine.name}</dd>
                             <dt>Part</dt>
                             <dd>{selectedPart.part.displayName}</dd>
                             <dt>Part ID</dt>
                             <dd className="pb-fs-mono">{selectedPart.part.partId || '—'}</dd>
                             <dt>Type</dt>
                             <dd>{formatPartTypeLabel(selectedPart.part)}</dd>
-                            <dt>Replaced</dt>
+                            <dt>Seq</dt>
+                            <dd>{selectedPart.part.partSeq ?? '—'}</dd>
+                            <dt>Installed</dt>
                             <dd>{formatReplaceDt(selectedPart.part.replaceDt)}</dd>
                             <dt>Runtime</dt>
                             <dd>
@@ -1230,22 +1545,56 @@ export default function PartsBoardPage() {
                                 />
                             </dd>
                         </dl>
-                        <label className="block mb-2 text-sm font-medium">Limit (hours)</label>
+                        <label className="block mb-2 text-sm font-medium">Runtime limit (hours)</label>
                         <InputNumber
                             value={limitInput}
                             onValueChange={(e) => setLimitInput(e.value ?? 0)}
                             min={1}
                             className="w-full mb-3"
+                            disabled={!selectedPart.part.partId}
                         />
-                        <div className="flex gap-2">
-                            <Button icon="pi pi-save" loading={saving} onClick={handleSaveLimit} tooltip="Save limit" />
+                        <div className="flex gap-2 mb-4">
+                            <Button
+                                icon="pi pi-save"
+                                label="Save limit"
+                                loading={saving}
+                                onClick={handleSaveLimit}
+                                disabled={!selectedPart.part.partId}
+                            />
                             <Button
                                 icon="pi pi-replay"
+                                label="Replace"
                                 severity="danger"
                                 outlined
                                 loading={saving}
                                 onClick={handleReplace}
-                                tooltip="Replace"
+                                disabled={!selectedPart.part.partId}
+                            />
+                        </div>
+                        <div className="pb-comp-history">
+                            <div className="pb-comp-history__head">
+                                <span className="font-semibold text-sm">Replace history</span>
+                                <Button
+                                    icon="pi pi-refresh"
+                                    rounded
+                                    text
+                                    size="small"
+                                    loading={historyLoading}
+                                    disabled={!selectedPart.part.partType}
+                                    onClick={() => {
+                                        const partType =
+                                            selectedPart.part.partType || formatPartTypeLabel(selectedPart.part);
+                                        if (partType) {
+                                            void loadComponentHistory(selectedPart.machine.name, partType);
+                                        }
+                                    }}
+                                    aria-label="Refresh history"
+                                />
+                            </div>
+                            <ComponentHistoryTable
+                                rows={componentHistory}
+                                loading={historyLoading}
+                                error={historyError}
                             />
                         </div>
                     </>
