@@ -467,3 +467,115 @@
     border: 1px dashed var(--surface-border);
     border-radius: 8px;
 }
+
+/* —— Phone / narrow viewport —— */
+@media (max-width: 767px) {
+    .parts-board {
+        --pb-scale: 0.82;
+        --pb-card-width: 100%;
+        --pb-card-min-height: auto;
+        --pb-tile-min: 3.25rem;
+        --pb-comp-min-h: 4.75rem;
+
+        min-height: auto;
+        gap: 0.4rem;
+        padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+
+    .pb-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.45rem;
+        padding: 0.5rem 0.65rem;
+    }
+
+    .pb-toolbar__title {
+        margin-right: 0;
+        font-size: 0.9rem;
+    }
+
+    .pb-toolbar__meta {
+        font-size: 0.68rem;
+    }
+
+    .pb-toolbar__actions {
+        margin-left: 0;
+        width: 100%;
+        gap: 0.35rem;
+    }
+
+    .pb-toolbar__actions > .p-input-icon-left {
+        flex: 1 1 100%;
+        min-width: 0;
+        width: 100%;
+    }
+
+    .pb-search {
+        width: 100%;
+    }
+
+    .pb-search.p-inputtext,
+    .pb-toolbar__actions .p-input-icon-left .p-inputtext {
+        width: 100%;
+    }
+
+    .pb-machine-grid {
+        flex-direction: column;
+        overflow-x: hidden;
+        overflow-y: visible;
+        scroll-snap-type: none;
+        gap: 0.55rem;
+        padding-bottom: 0.5rem;
+    }
+
+    .pb-machine {
+        flex: none;
+        width: 100%;
+        min-height: 0;
+    }
+
+    .pb-machine__head {
+        padding: 0.5rem 0.6rem;
+    }
+
+    .pb-machine__fixed {
+        padding: 0.45rem 0.5rem 0.5rem;
+        gap: 0.4rem;
+    }
+
+    .pb-machine__tiles {
+        grid-template-columns: repeat(auto-fill, minmax(var(--pb-tile-min), 1fr));
+        overflow: visible;
+        padding: 0.45rem 0.5rem 0.5rem;
+    }
+
+    .pb-comp-tile:hover,
+    .pb-tile:hover {
+        transform: none;
+    }
+
+    .pb-comp-tile:active,
+    .pb-tile:active {
+        transform: scale(0.98);
+    }
+
+    .pb-loading {
+        min-height: 10rem;
+    }
+
+    .pb-empty {
+        padding: 1.5rem 1rem;
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 399px) {
+    .parts-board {
+        --pb-tile-min: 2.85rem;
+        --pb-comp-min-h: 4.35rem;
+    }
+
+    .pb-machine__tiles {
+        gap: 0.3rem;
+    }
+}

@@ -1381,6 +1381,7 @@ export default function PartsBoardPage() {
             </Dialog>
 
             <Dialog
+                className="pb-detail-dialog"
                 header={editTitle}
                 visible={selectedPart !== null}
                 style={{
@@ -1389,7 +1390,7 @@ export default function PartsBoardPage() {
                         selectedPart?.kind === 'fixed' ||
                         selectedPart?.kind === 'custom'
                             ? 'min(92vw, 40rem)'
-                            : '26rem'
+                            : 'min(92vw, 26rem)'
                 }}
                 onHide={closeEdit}
                 dismissableMask
@@ -1453,7 +1454,7 @@ export default function PartsBoardPage() {
                             className="w-full mb-3"
                             disabled={!selectedPart.roller.rollerId}
                         />
-                        <div className="flex gap-2 mb-4">
+                        <div className="pb-edit-actions mb-4">
                             <Button
                                 icon="pi pi-save"
                                 label="Save limit"
@@ -1553,7 +1554,7 @@ export default function PartsBoardPage() {
                             className="w-full mb-3"
                             disabled={!selectedPart.part.partId}
                         />
-                        <div className="flex gap-2 mb-4">
+                        <div className="pb-edit-actions mb-4">
                             <Button
                                 icon="pi pi-save"
                                 label="Save limit"
@@ -1602,9 +1603,10 @@ export default function PartsBoardPage() {
             </Dialog>
 
             <Dialog
+                className="pb-add-dialog"
                 header="Add component"
                 visible={addComponentOpen}
-                style={{ width: '28rem' }}
+                style={{ width: 'min(92vw, 28rem)' }}
                 onHide={() => setAddComponentOpen(false)}
                 dismissableMask
             >
@@ -1653,7 +1655,7 @@ export default function PartsBoardPage() {
                         </div>
                     ) : null}
                     <div className="grid grid-nogutter gap-3">
-                        <div className="col-6">
+                        <div className="col-12 md:col-6">
                             <label className="block mb-2 text-sm font-medium">Company</label>
                             <InputText
                                 value={addCompany}
@@ -1661,7 +1663,7 @@ export default function PartsBoardPage() {
                                 className="w-full"
                             />
                         </div>
-                        <div className="col-6">
+                        <div className="col-12 md:col-6">
                             <label className="block mb-2 text-sm font-medium">Factory</label>
                             <InputText
                                 value={addFactory}
