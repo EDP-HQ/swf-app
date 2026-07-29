@@ -89,8 +89,10 @@ function preserveRoller(
         return withRollerStats(incoming, incoming.runtimeHours, incoming.limitHours);
     }
 
+    // Limit always from DB refresh (incoming); never keep a stale client default.
+    const limitHours = incoming.limitHours;
+
     if (stillTicking && elapsedHours > 0) {
-        const limitHours = incoming.limitHours || old.limitHours;
         return withRollerStats(
             { ...incoming, limitHours },
             old.runtimeHours + elapsedHours,
@@ -98,7 +100,7 @@ function preserveRoller(
         );
     }
 
-    return withRollerStats(incoming, incoming.runtimeHours, incoming.limitHours || old.limitHours);
+    return withRollerStats(incoming, incoming.runtimeHours, limitHours);
 }
 
 export function mergePreservedRollers(

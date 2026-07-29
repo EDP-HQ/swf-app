@@ -155,7 +155,7 @@ async function fetchRollerEndpoint<T = unknown>(
 
 export async function fetchRollerDashboard(target = getRollerDbTarget()): Promise<RollerDashboardData> {
 
-    const [list, onoff, activeList, currentRuntime, history, components] = await Promise.all([
+    const [list, onoff, activeList, currentRuntime, components] = await Promise.all([
 
         fetchRollerEndpoint('list', undefined, target),
 
@@ -165,15 +165,13 @@ export async function fetchRollerDashboard(target = getRollerDbTarget()): Promis
 
         fetchRollerEndpoint('currentruntime', undefined, target),
 
-        fetchRollerEndpoint('history', undefined, target),
-
         fetchComponents(target).catch(() => [])
 
     ]);
 
 
 
-    const dashboard = mergeRollerDashboard({ list, onoff, activeList, currentRuntime, history });
+    const dashboard = mergeRollerDashboard({ list, onoff, activeList, currentRuntime });
 
     return {
 

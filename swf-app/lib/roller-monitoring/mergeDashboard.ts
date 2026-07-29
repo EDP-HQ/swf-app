@@ -1,4 +1,3 @@
-import { ROLLER_DEFAULT_LIMIT_HOURS } from './constants';
 import { createGearbox, createSkipperBack, createSkipperFront, recountMachine } from './machineParts';
 import { asRecordArray, rowNum, rowStr } from './parseRows';
 import { computeRollerStatus, usagePct } from './rollerStatus';
@@ -9,36 +8,25 @@ type MergeInput = {
     onoff: unknown;
     activeList: unknown;
     currentRuntime: unknown;
-    history: unknown;
 };
 
 function runtimeHoursFromSeconds(sec: number): number {
     return sec / 3600;
 }
 
+/** Active roller row from sp_Roller_Curr_Runtime — source of truth for ID/runtime/limit/install. */
 function buildRuntimeMap(rows: Record<string, unknown>[]) {
-    const map = new Map<string, { runtimeHours: number; rollerId: string; replaceDt: string }>();
+    const map = new Map<
+        string,
+        { runtimeHours: number; limitHours: number; rollerId: string; replaceDt: string }
+    >();
     for (const row of rows) {
         const bin = rowStr(row, 'BIN_LOCATION_CD');
         if (!bin) continue;
         const sec = rowNum(row, 'RUNTIME_SEC');
         map.set(bin, {
             runtimeHours: runtimeHoursFromSeconds(sec),
-            rollerId: rowStr(row, 'ROLLER_ID'),
-            replaceDt: rowStr(row, 'REPLACE_DT')
-        });
-    }
-    return map;
-}
-
-function buildHistoryMap(rows: Record<string, unknown>[]) {
-    const map = new Map<string, { limitHours: number; rollerId: string; replaceDt: string }>();
-    for (const row of rows) {
-        const bin = rowStr(row, 'BIN_LOCATION_CD');
-        if (!bin) continue;
-        const limit = rowNum(row, 'RUNTIME_LIMIT_HOUR') || ROLLER_DEFAULT_LIMIT_HOURS;
-        map.set(bin, {
-            limitHours: limit,
+            limitHours: rowNum(row, 'RUNTIME_LIMIT_HOUR'),
             rollerId: rowStr(row, 'ROLLER_ID'),
             replaceDt: rowStr(row, 'REPLACE_DT')
         });
@@ -88,7 +76,6 @@ export function mergeRollerDashboard(input: MergeInput): RollerDashboardData {
     const onoffMap = buildOnoffMap(asRecordArray(input.onoff));
     const activeSet = buildActiveSet(asRecordArray(input.activeList));
     const runtimeMap = buildRuntimeMap(asRecordArray(input.currentRuntime));
-    const historyMap = buildHistoryMap(asRecordArray(input.history));
     const grouped = groupListByMachine(listRows);
 
     const machines: MachineDashboard[] = [];
@@ -98,9 +85,8 @@ export function mergeRollerDashboard(input: MergeInput): RollerDashboardData {
         const rollerRows: RollerRow[] = rollers.map((row, index) => {
             const bin = rowStr(row, 'BIN_LOCATION_CD');
             const runtime = runtimeMap.get(bin);
-            const hist = historyMap.get(bin);
             const runtimeHours = runtime?.runtimeHours ?? 0;
-            const limitHours = hist?.limitHours ?? ROLLER_DEFAULT_LIMIT_HOURS;
+            const limitHours = runtime?.limitHours ?? 0;
             const status = computeRollerStatus(runtimeHours, limitHours);
 
             return {
@@ -108,10 +94,10 @@ export function mergeRollerDashboard(input: MergeInput): RollerDashboardData {
                 binLocation: bin,
                 description: rowStr(row, 'BIN_LOCATION_DESC'),
                 machineCode: rowStr(row, 'MACHINE_CD'),
-                rollerId: runtime?.rollerId || hist?.rollerId || '',
+                rollerId: runtime?.rollerId || '',
                 runtimeHours,
                 limitHours,
-                replaceDt: runtime?.replaceDt || hist?.replaceDt || '',
+                replaceDt: runtime?.replaceDt || '',
                 isActive: activeSet.has(bin),
                 status,
                 usagePct: usagePct(runtimeHours, limitHours)
