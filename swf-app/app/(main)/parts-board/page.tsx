@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from 'primereact/button';
+import { Checkbox } from 'primereact/checkbox';
 import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputNumber } from 'primereact/inputnumber';
@@ -13,7 +14,7 @@ import { SelectButton } from 'primereact/selectbutton';
 import { Tag } from 'primereact/tag';
 import { Toast } from 'primereact/toast';
 import { Tooltip } from 'primereact/tooltip';
-import { CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS, GEARBOX_DEFAULT_LIMIT_HOURS, ROLLER_AUTO_REFRESH_MS, ROLLER_LIVE_TICK_MS } from '@/lib/roller-monitoring/constants';
+import { CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS, GEARBOX_DEFAULT_LIMIT_HOURS, ROLLER_AUTO_REFRESH_MS, ROLLER_DEFAULT_LIMIT_HOURS, ROLLER_LIVE_TICK_MS } from '@/lib/roller-monitoring/constants';
 import { formatReplaceDt, formatRuntimeHms } from '@/lib/roller-monitoring/formatRuntime';
 import { RuntimeTimer } from '@/lib/roller-monitoring/RuntimeTimer';
 import {
@@ -29,6 +30,7 @@ import {
     rollersStoppedTicking
 } from '@/lib/roller-monitoring/machineRollers';
 import {
+    batchUpdateRollerRuntimeLimits,
     fetchRollerDashboard,
     fetchRollerHistory,
     replaceRoller,
@@ -702,6 +704,11 @@ export default function PartsBoardPage() {
     const [rollerHistory, setRollerHistory] = useState<RollerHistoryRow[]>([]);
     const [rollerHistoryLoading, setRollerHistoryLoading] = useState(false);
     const [rollerHistoryError, setRollerHistoryError] = useState<string | null>(null);
+    const [bulkEditOpen, setBulkEditOpen] = useState(false);
+    const [bulkMachineFilter, setBulkMachineFilter] = useState('');
+    const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
+    const [bulkLimitHours, setBulkLimitHours] = useState(ROLLER_DEFAULT_LIMIT_HOURS);
+    const [bulkSaving, setBulkSaving] = useState(false);
     const machinesRef = useRef<MachineDashboard[]>([]);
     const syncEpochMsRef = useRef(Date.now());
 
@@ -1114,6 +1121,88 @@ export default function PartsBoardPage() {
         [sortedMachines]
     );
 
+    const bulkRollerRows = useMemo(() => {
+        const rows: { key: string; machineName: string; roller: RollerRow }[] = [];
+        for (const machine of sortedMachines) {
+            if (bulkMachineFilter && machine.name !== bulkMachineFilter) continue;
+            for (const roller of machine.rollers) {
+                if (!roller.rollerId) continue;
+                rows.push({
+                    key: `${machine.name}::${roller.rollerId}`,
+                    machineName: machine.name,
+                    roller
+                });
+            }
+        }
+        return rows;
+    }, [sortedMachines, bulkMachineFilter]);
+
+    const bulkVisibleIds = useMemo(
+        () => bulkRollerRows.map((r) => r.roller.rollerId),
+        [bulkRollerRows]
+    );
+
+    const bulkAllVisibleSelected =
+        bulkVisibleIds.length > 0 && bulkVisibleIds.every((id) => bulkSelectedIds.includes(id));
+
+    const openBulkEdit = () => {
+        setBulkMachineFilter('');
+        setBulkSelectedIds([]);
+        setBulkLimitHours(ROLLER_DEFAULT_LIMIT_HOURS);
+        setBulkEditOpen(true);
+    };
+
+    const toggleBulkRoller = (rollerId: string, checked: boolean) => {
+        setBulkSelectedIds((prev) => {
+            if (checked) return prev.includes(rollerId) ? prev : [...prev, rollerId];
+            return prev.filter((id) => id !== rollerId);
+        });
+    };
+
+    const toggleBulkSelectAllVisible = (checked: boolean) => {
+        setBulkSelectedIds((prev) => {
+            if (checked) {
+                const next = new Set(prev);
+                for (const id of bulkVisibleIds) next.add(id);
+                return [...next];
+            }
+            const hide = new Set(bulkVisibleIds);
+            return prev.filter((id) => !hide.has(id));
+        });
+    };
+
+    const handleBulkSaveLimit = async () => {
+        if (bulkSelectedIds.length === 0) {
+            toast.current?.show({ severity: 'warn', summary: 'Select at least one roller', life: 3000 });
+            return;
+        }
+        if (bulkLimitHours < 1) {
+            toast.current?.show({ severity: 'warn', summary: 'Limit must be at least 1 hour', life: 3000 });
+            return;
+        }
+
+        setBulkSaving(true);
+        try {
+            await batchUpdateRollerRuntimeLimits(bulkSelectedIds, bulkLimitHours, dbTarget);
+            toast.current?.show({
+                severity: 'success',
+                summary: `Updated ${bulkSelectedIds.length} roller limit(s)`,
+                life: 3000
+            });
+            setBulkEditOpen(false);
+            await loadDashboard(true, dbTarget);
+        } catch (e) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Bulk update failed',
+                detail: e instanceof Error ? e.message : undefined,
+                life: 5000
+            });
+        } finally {
+            setBulkSaving(false);
+        }
+    };
+
     const addTargetMachine = useMemo(
         () => (addMachineName ? machines.find((m) => m.name === addMachineName) ?? null : null),
         [machines, addMachineName]
@@ -1284,6 +1373,14 @@ export default function PartsBoardPage() {
                         disabled={loading || machines.length === 0}
                         onClick={openAddComponent}
                         tooltip="Add component"
+                    />
+                    <Button
+                        icon="pi pi-pencil"
+                        rounded
+                        outlined
+                        disabled={loading || machines.length === 0}
+                        onClick={openBulkEdit}
+                        tooltip="Bulk edit roller limits"
                     />
                     <Button
                         icon={autoRefresh ? 'pi pi-clock' : 'pi pi-pause'}
@@ -1697,6 +1794,95 @@ export default function PartsBoardPage() {
                             loading={addSaving}
                             disabled={!addMachineName || !addPartAvailable || addLimitHours < 1}
                             onClick={handleAddComponent}
+                        />
+                    </div>
+                </div>
+            </Dialog>
+
+            <Dialog
+                className="pb-bulk-dialog"
+                header="Bulk edit roller limits"
+                visible={bulkEditOpen}
+                style={{ width: 'min(96vw, 42rem)' }}
+                onHide={() => setBulkEditOpen(false)}
+                dismissableMask
+                blockScroll
+            >
+                <div className="pb-bulk flex flex-column gap-3">
+                    <div>
+                        <label className="block mb-2 text-sm font-medium">Machine</label>
+                        <Dropdown
+                            value={bulkMachineFilter}
+                            options={[{ label: 'All machines', value: '' }, ...machineOptions]}
+                            onChange={(e) => setBulkMachineFilter((e.value as string) ?? '')}
+                            placeholder="All machines"
+                            className="w-full"
+                        />
+                    </div>
+
+                    <div className="pb-bulk__toolbar">
+                        <div className="flex align-items-center gap-2">
+                            <Checkbox
+                                inputId="pb-bulk-select-all"
+                                checked={bulkAllVisibleSelected}
+                                onChange={(e) => toggleBulkSelectAllVisible(!!e.checked)}
+                                disabled={bulkVisibleIds.length === 0}
+                            />
+                            <label htmlFor="pb-bulk-select-all" className="text-sm">
+                                Select all shown ({bulkVisibleIds.length})
+                            </label>
+                        </div>
+                        <span className="text-sm text-color-secondary">
+                            {bulkSelectedIds.length} selected
+                        </span>
+                    </div>
+
+                    <div className="pb-bulk__list">
+                        {bulkRollerRows.length === 0 ? (
+                            <p className="pb-bulk__empty">No active rollers with an ID in this view.</p>
+                        ) : (
+                            bulkRollerRows.map(({ key, machineName, roller }) => {
+                                const inputId = `pb-bulk-${roller.rollerId}`;
+                                return (
+                                    <label key={key} htmlFor={inputId} className="pb-bulk__row">
+                                        <Checkbox
+                                            inputId={inputId}
+                                            checked={bulkSelectedIds.includes(roller.rollerId)}
+                                            onChange={(e) => toggleBulkRoller(roller.rollerId, !!e.checked)}
+                                        />
+                                        <span className="pb-bulk__meta">
+                                            <span className="pb-bulk__title">
+                                                {machineName} · {roller.displayName}
+                                            </span>
+                                            <span className="pb-bulk__sub pb-fs-mono">
+                                                {roller.rollerId} · {roller.binLocation || '—'} · limit{' '}
+                                                {formatRuntimeHms(roller.limitHours)}
+                                            </span>
+                                        </span>
+                                    </label>
+                                );
+                            })
+                        )}
+                    </div>
+
+                    <div>
+                        <label className="block mb-2 text-sm font-medium">New runtime limit (hours)</label>
+                        <InputNumber
+                            value={bulkLimitHours}
+                            onValueChange={(e) => setBulkLimitHours(e.value ?? 0)}
+                            min={1}
+                            className="w-full"
+                        />
+                    </div>
+
+                    <div className="flex gap-2 justify-content-end">
+                        <Button label="Cancel" text onClick={() => setBulkEditOpen(false)} disabled={bulkSaving} />
+                        <Button
+                            label="Apply limit"
+                            icon="pi pi-save"
+                            loading={bulkSaving}
+                            disabled={bulkSelectedIds.length === 0 || bulkLimitHours < 1}
+                            onClick={() => void handleBulkSaveLimit()}
                         />
                     </div>
                 </div>
