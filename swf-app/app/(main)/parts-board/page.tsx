@@ -11,6 +11,7 @@ import { Message } from 'primereact/message';
 import { ProgressBar } from 'primereact/progressbar';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { SelectButton } from 'primereact/selectbutton';
+import { TabPanel, TabView } from 'primereact/tabview';
 import { Tag } from 'primereact/tag';
 import { Toast } from 'primereact/toast';
 import { Tooltip } from 'primereact/tooltip';
@@ -50,7 +51,24 @@ import {
     type AddPartChoice,
     type ComponentPartOption
 } from '@/lib/roller-monitoring/componentCatalog';
-import { insertComponent, replaceComponent, updateComponentRuntime, updateComponentRuntimeLimit, fetchComponentHistory, type ComponentHistoryRow } from '@/lib/roller-monitoring/componentsClient';
+import {
+    fetchComponents,
+    fetchComponentHistory,
+    insertComponent,
+    replaceComponent,
+    updateComponentRuntime,
+    updateComponentRuntimeLimit,
+    type ComponentHistoryRow
+} from '@/lib/roller-monitoring/componentsClient';
+import { fetchCmMachines, insertCmMachine } from '@/lib/roller-monitoring/cmMachineClient';
+import { applyComponentsToMachines, machinesFromRegistry } from '@/lib/roller-monitoring/mergeComponents';
+import {
+    isBuncherBoard,
+    PROCESS_OPTIONS,
+    STRAND_LINE_OPTIONS,
+    type ProcessCd,
+    type StrandLineCd
+} from '@/lib/roller-monitoring/processCatalog';
 import {
     getRollerDbTarget,
     ROLLER_DEV_MODE_STORAGE_KEY,
@@ -571,6 +589,7 @@ function MachineCard({
     syncEpochMs,
     nowMs,
     search,
+    componentsOnly = false,
     onOpenFullscreen,
     onOpenRoller,
     onOpenFixed,
@@ -580,17 +599,21 @@ function MachineCard({
     syncEpochMs: number;
     nowMs: number;
     search: string;
+    componentsOnly?: boolean;
     onOpenFullscreen: () => void;
     onOpenRoller: (live: LiveRoller) => void;
     onOpenFixed: (partKey: MachineFixedPartKey, part: FixedPartRow) => void;
     onOpenCustom: (part: FixedPartRow) => void;
 }) {
-    const liveRollers = machine.rollers
-        .map((r) => buildLiveRoller(r, machine, syncEpochMs, nowMs))
-        .filter((lr) => !search || machine.name.toLowerCase().includes(search));
+    if (search && !machine.name.toLowerCase().includes(search)) return null;
 
-    if (liveRollers.length === 0) return null;
+    const liveRollers = componentsOnly
+        ? []
+        : machine.rollers.map((r) => buildLiveRoller(r, machine, syncEpochMs, nowMs));
 
+    if (!componentsOnly && liveRollers.length === 0) return null;
+
+    const showFixed = (part: FixedPartRow) => !componentsOnly || !!part.partId;
     const cardTone = machine.running ? 'run' : 'idle';
 
     return (
@@ -608,42 +631,58 @@ function MachineCard({
                         tooltip="Full screen"
                         onClick={onOpenFullscreen}
                     />
-                    <span className={`pb-machine__state ${machine.running ? 'pb-machine__state--run' : ''}`}>
-                        <i className={`pi ${machine.running ? 'pi-play-circle' : 'pi-stop-circle'}`} />
-                        {machine.running ? 'Run' : 'Stop'}
-                    </span>
+                    {!componentsOnly ? (
+                        <span className={`pb-machine__state ${machine.running ? 'pb-machine__state--run' : ''}`}>
+                            <i className={`pi ${machine.running ? 'pi-play-circle' : 'pi-stop-circle'}`} />
+                            {machine.running ? 'Run' : 'Stop'}
+                        </span>
+                    ) : (
+                        <span className="pb-machine__state">
+                            {machine.extraParts.length +
+                                (machine.gearbox.partId ? 1 : 0) +
+                                (machine.skipperFront.partId ? 1 : 0) +
+                                (machine.skipperBack.partId ? 1 : 0)}{' '}
+                            parts
+                        </span>
+                    )}
                 </div>
             </header>
 
             <div className="pb-machine__body">
                 <div className="pb-machine__fixed">
-                    <FixedPartTile
-                        label="Gearbox"
-                        shortLabel="Gearbox"
-                        part={machine.gearbox}
-                        machine={machine}
-                        syncEpochMs={syncEpochMs}
-                        nowMs={nowMs}
-                        onSelect={() => onOpenFixed('gearbox', machine.gearbox)}
-                    />
-                    <FixedPartTile
-                        label="Skipper front"
-                        shortLabel="SF"
-                        part={machine.skipperFront}
-                        machine={machine}
-                        syncEpochMs={syncEpochMs}
-                        nowMs={nowMs}
-                        onSelect={() => onOpenFixed('skipperFront', machine.skipperFront)}
-                    />
-                    <FixedPartTile
-                        label="Skipper back"
-                        shortLabel="SB"
-                        part={machine.skipperBack}
-                        machine={machine}
-                        syncEpochMs={syncEpochMs}
-                        nowMs={nowMs}
-                        onSelect={() => onOpenFixed('skipperBack', machine.skipperBack)}
-                    />
+                    {showFixed(machine.gearbox) ? (
+                        <FixedPartTile
+                            label="Gearbox"
+                            shortLabel="Gearbox"
+                            part={machine.gearbox}
+                            machine={machine}
+                            syncEpochMs={syncEpochMs}
+                            nowMs={nowMs}
+                            onSelect={() => onOpenFixed('gearbox', machine.gearbox)}
+                        />
+                    ) : null}
+                    {showFixed(machine.skipperFront) ? (
+                        <FixedPartTile
+                            label="Skipper front"
+                            shortLabel="SF"
+                            part={machine.skipperFront}
+                            machine={machine}
+                            syncEpochMs={syncEpochMs}
+                            nowMs={nowMs}
+                            onSelect={() => onOpenFixed('skipperFront', machine.skipperFront)}
+                        />
+                    ) : null}
+                    {showFixed(machine.skipperBack) ? (
+                        <FixedPartTile
+                            label="Skipper back"
+                            shortLabel="SB"
+                            part={machine.skipperBack}
+                            machine={machine}
+                            syncEpochMs={syncEpochMs}
+                            nowMs={nowMs}
+                            onSelect={() => onOpenFixed('skipperBack', machine.skipperBack)}
+                        />
+                    ) : null}
                     {machine.extraParts.map((part) => (
                         <FixedPartTile
                             key={part.partId || part.displayName}
@@ -657,13 +696,26 @@ function MachineCard({
                             onSelect={() => onOpenCustom(part)}
                         />
                     ))}
+                    {componentsOnly &&
+                    !machine.gearbox.partId &&
+                    !machine.skipperFront.partId &&
+                    !machine.skipperBack.partId &&
+                    machine.extraParts.length === 0 ? (
+                        <p className="pb-machine__empty-parts">No components yet — use Add component</p>
+                    ) : null}
                 </div>
 
-                <div className="pb-machine__tiles">
-                {liveRollers.map((lr) => (
-                    <RollerTile key={rollerRowKey(machine.name, lr.roller, machine.rollers.indexOf(lr.roller))} live={lr} onSelect={() => onOpenRoller(lr)} />
-                ))}
-                </div>
+                {!componentsOnly ? (
+                    <div className="pb-machine__tiles">
+                        {liveRollers.map((lr) => (
+                            <RollerTile
+                                key={rollerRowKey(machine.name, lr.roller, machine.rollers.indexOf(lr.roller))}
+                                live={lr}
+                                onSelect={() => onOpenRoller(lr)}
+                            />
+                        ))}
+                    </div>
+                ) : null}
             </div>
         </article>
     );
@@ -709,8 +761,19 @@ export default function PartsBoardPage() {
     const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
     const [bulkLimitHours, setBulkLimitHours] = useState(ROLLER_DEFAULT_LIMIT_HOURS);
     const [bulkSaving, setBulkSaving] = useState(false);
+    const [processCd, setProcessCd] = useState<ProcessCd>('STRANDING');
+    const [strandLineCd, setStrandLineCd] = useState<StrandLineCd>('BUNCHER');
+    const [addMachineOpen, setAddMachineOpen] = useState(false);
+    const [addMachineSaving, setAddMachineSaving] = useState(false);
+    const [addMachineNameInput, setAddMachineNameInput] = useState('');
+    const [addMachineCompany, setAddMachineCompany] = useState(COMPONENT_DEFAULT_COMPANY);
+    const [addMachineFactory, setAddMachineFactory] = useState(COMPONENT_DEFAULT_FACTORY);
     const machinesRef = useRef<MachineDashboard[]>([]);
     const syncEpochMsRef = useRef(Date.now());
+    const processCdRef = useRef<ProcessCd>('STRANDING');
+    const strandLineCdRef = useRef<StrandLineCd>('BUNCHER');
+
+    const buncherBoard = isBuncherBoard(processCd, strandLineCd);
 
     useEffect(() => {
         machinesRef.current = machines;
@@ -720,11 +783,33 @@ export default function PartsBoardPage() {
         syncEpochMsRef.current = syncEpochMs;
     }, [syncEpochMs]);
 
+    useEffect(() => {
+        processCdRef.current = processCd;
+        strandLineCdRef.current = strandLineCd;
+    }, [processCd, strandLineCd]);
+
     const loadDashboard = useCallback(async (silent = false, target = getRollerDbTarget()) => {
         if (!silent) setLoading(true);
         else setRefreshing(true);
         setError(null);
         try {
+            const activeProcess = processCdRef.current;
+            const activeLine = activeProcess === 'STRANDING' ? strandLineCdRef.current : null;
+            const useBuncher = isBuncherBoard(activeProcess, activeLine);
+
+            if (!useBuncher) {
+                const [registry, components] = await Promise.all([
+                    fetchCmMachines(activeProcess, activeLine, target),
+                    fetchComponents(target)
+                ]);
+                const shells = machinesFromRegistry(registry.map((m) => m.machineName));
+                const incoming = applyComponentsToMachines(shells, components);
+                setMachines(incoming);
+                setLastSync(new Date().toISOString());
+                setSyncEpochMs(Date.now());
+                return;
+            }
+
             const prev = machinesRef.current;
             const syncMs = syncEpochMsRef.current;
             const saveNowMs = Date.now();
@@ -810,9 +895,15 @@ export default function PartsBoardPage() {
 
     useEffect(() => {
         setDbTargetUi(getRollerDbTarget());
-        loadDashboard(false, getRollerDbTarget());
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        setMachines([]);
+        setFullscreenMachineName(null);
+        setSelectedPart(null);
+        void loadDashboard(false, getRollerDbTarget());
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [processCd, strandLineCd]);
 
     useEffect(() => {
         if (developerMode) {
@@ -1152,6 +1243,60 @@ export default function PartsBoardPage() {
         setBulkEditOpen(true);
     };
 
+    const openAddMachine = () => {
+        setAddMachineNameInput('');
+        setAddMachineCompany(COMPONENT_DEFAULT_COMPANY);
+        setAddMachineFactory(COMPONENT_DEFAULT_FACTORY);
+        setAddMachineOpen(true);
+    };
+
+    const handleAddMachine = async () => {
+        const name = addMachineNameInput.trim();
+        if (!name) {
+            toast.current?.show({ severity: 'warn', summary: 'Machine name is required', life: 3000 });
+            return;
+        }
+        if (processCd === 'STRANDING' && !strandLineCd) {
+            toast.current?.show({ severity: 'warn', summary: 'Select Buncher or Tubular', life: 3000 });
+            return;
+        }
+
+        setAddMachineSaving(true);
+        try {
+            await insertCmMachine(
+                {
+                    processCd,
+                    lineCd: processCd === 'STRANDING' ? strandLineCd : null,
+                    machineName: name,
+                    company: addMachineCompany.trim() || COMPONENT_DEFAULT_COMPANY,
+                    factory: addMachineFactory.trim() || COMPONENT_DEFAULT_FACTORY
+                },
+                dbTarget
+            );
+            toast.current?.show({ severity: 'success', summary: 'Machine added', life: 3000 });
+            setAddMachineOpen(false);
+            await loadDashboard(true, dbTarget);
+        } catch (e) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Add machine failed',
+                detail: e instanceof Error ? e.message : undefined,
+                life: 5000
+            });
+        } finally {
+            setAddMachineSaving(false);
+        }
+    };
+
+    const processTabIndex = Math.max(
+        0,
+        PROCESS_OPTIONS.findIndex((p) => p.code === processCd)
+    );
+    const strandLineTabIndex = Math.max(
+        0,
+        STRAND_LINE_OPTIONS.findIndex((p) => p.code === strandLineCd)
+    );
+
     const toggleBulkRoller = (rollerId: string, checked: boolean) => {
         setBulkSelectedIds((prev) => {
             if (checked) return prev.includes(rollerId) ? prev : [...prev, rollerId];
@@ -1367,6 +1512,14 @@ export default function PartsBoardPage() {
                         position="bottom"
                     />
                     <Button
+                        icon="pi pi-server"
+                        rounded
+                        outlined
+                        disabled={loading}
+                        onClick={openAddMachine}
+                        tooltip="Add machine"
+                    />
+                    <Button
                         icon="pi pi-plus"
                         rounded
                         outlined
@@ -1374,14 +1527,16 @@ export default function PartsBoardPage() {
                         onClick={openAddComponent}
                         tooltip="Add component"
                     />
-                    <Button
-                        icon="pi pi-pencil"
-                        rounded
-                        outlined
-                        disabled={loading || machines.length === 0}
-                        onClick={openBulkEdit}
-                        tooltip="Bulk edit roller limits"
-                    />
+                    {buncherBoard ? (
+                        <Button
+                            icon="pi pi-pencil"
+                            rounded
+                            outlined
+                            disabled={loading || machines.length === 0}
+                            onClick={openBulkEdit}
+                            tooltip="Bulk edit roller limits"
+                        />
+                    ) : null}
                     <Button
                         icon={autoRefresh ? 'pi pi-clock' : 'pi pi-pause'}
                         rounded
@@ -1400,6 +1555,34 @@ export default function PartsBoardPage() {
                 </div>
             </header>
 
+            <div className="pb-process-tabs">
+                <TabView
+                    activeIndex={processTabIndex}
+                    onTabChange={(e) => {
+                        const next = PROCESS_OPTIONS[e.index]?.code;
+                        if (next) setProcessCd(next);
+                    }}
+                >
+                    {PROCESS_OPTIONS.map((p) => (
+                        <TabPanel key={p.code} header={p.label} />
+                    ))}
+                </TabView>
+                {processCd === 'STRANDING' ? (
+                    <TabView
+                        className="pb-process-tabs__line"
+                        activeIndex={strandLineTabIndex}
+                        onTabChange={(e) => {
+                            const next = STRAND_LINE_OPTIONS[e.index]?.code;
+                            if (next) setStrandLineCd(next);
+                        }}
+                    >
+                        {STRAND_LINE_OPTIONS.map((p) => (
+                            <TabPanel key={p.code} header={p.label} />
+                        ))}
+                    </TabView>
+                ) : null}
+            </div>
+
             {error && !loading && <Message severity="error" text={error} className="pb-error" />}
 
             {loading ? (
@@ -1407,7 +1590,11 @@ export default function PartsBoardPage() {
                     <ProgressSpinner />
                 </div>
             ) : visibleMachines.length === 0 ? (
-                <div className="pb-empty">No machines match this view</div>
+                <div className="pb-empty">
+                    {buncherBoard
+                        ? 'No machines match this view'
+                        : 'No machines registered for this process yet. Click Add machine to key one in.'}
+                </div>
             ) : (
                 <div className="pb-machine-grid">
                     {visibleMachines.map((machine) => (
@@ -1417,6 +1604,7 @@ export default function PartsBoardPage() {
                             syncEpochMs={syncEpochMs}
                             nowMs={nowMs}
                             search={searchLower}
+                            componentsOnly={!buncherBoard}
                             onOpenFullscreen={() => openMachine(machine.name)}
                             onOpenRoller={(lr) => openRollerEdit(machine, lr.roller)}
                             onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
@@ -1794,6 +1982,64 @@ export default function PartsBoardPage() {
                             loading={addSaving}
                             disabled={!addMachineName || !addPartAvailable || addLimitHours < 1}
                             onClick={handleAddComponent}
+                        />
+                    </div>
+                </div>
+            </Dialog>
+
+            <Dialog
+                className="pb-add-dialog"
+                header="Add machine"
+                visible={addMachineOpen}
+                style={{ width: 'min(92vw, 28rem)' }}
+                onHide={() => setAddMachineOpen(false)}
+                dismissableMask
+            >
+                <div className="flex flex-column gap-3">
+                    <Message
+                        severity="info"
+                        text={`Register a machine under ${PROCESS_OPTIONS.find((p) => p.code === processCd)?.label ?? processCd}${
+                            processCd === 'STRANDING'
+                                ? ` · ${STRAND_LINE_OPTIONS.find((p) => p.code === strandLineCd)?.label ?? strandLineCd}`
+                                : ''
+                        }. Then add components on that machine.`}
+                    />
+                    <div>
+                        <label className="block mb-2 text-sm font-medium">Machine name</label>
+                        <InputText
+                            value={addMachineNameInput}
+                            onChange={(e) => setAddMachineNameInput(e.target.value)}
+                            placeholder="e.g. TUB 1250-1"
+                            className="w-full"
+                            maxLength={100}
+                        />
+                    </div>
+                    <div className="grid grid-nogutter gap-3">
+                        <div className="col-12 md:col-6">
+                            <label className="block mb-2 text-sm font-medium">Company</label>
+                            <InputText
+                                value={addMachineCompany}
+                                onChange={(e) => setAddMachineCompany(e.target.value)}
+                                className="w-full"
+                            />
+                        </div>
+                        <div className="col-12 md:col-6">
+                            <label className="block mb-2 text-sm font-medium">Factory</label>
+                            <InputText
+                                value={addMachineFactory}
+                                onChange={(e) => setAddMachineFactory(e.target.value)}
+                                className="w-full"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex gap-2 justify-content-end">
+                        <Button label="Cancel" text onClick={() => setAddMachineOpen(false)} disabled={addMachineSaving} />
+                        <Button
+                            label="Add"
+                            icon="pi pi-check"
+                            loading={addMachineSaving}
+                            disabled={!addMachineNameInput.trim()}
+                            onClick={() => void handleAddMachine()}
                         />
                     </div>
                 </div>

@@ -67,6 +67,30 @@ function customPartFromRow(row: Record<string, unknown>): FixedPartRow {
     );
 }
 
+/** Build empty machine shells from the process machine registry (no rollers). */
+export function machinesFromRegistry(machineNames: string[]): MachineDashboard[] {
+    return machineNames
+        .map((name) => name.trim())
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b))
+        .map((name) =>
+            recountMachine({
+                name,
+                machineNo: '',
+                running: false,
+                rollers: [],
+                gearbox: createGearbox(),
+                skipperFront: createSkipperFront(),
+                skipperBack: createSkipperBack(),
+                extraParts: [],
+                okCount: 0,
+                dueCount: 0,
+                overdueCount: 0,
+                activeCount: 0
+            })
+        );
+}
+
 /** Overlay DB component rows onto machines (gearbox + skipper SF/SB + custom parts). */
 export function applyComponentsToMachines(
     machines: MachineDashboard[],

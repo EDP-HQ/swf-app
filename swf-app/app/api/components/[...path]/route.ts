@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { proxyErrorPayload, proxySwfApi } from '@/lib/api/swfApiProxy';
 
-const ALLOWED_GET = new Set(['select', 'history']);
-const ALLOWED_POST = new Set(['replace', 'updateruntime', 'updateruntimelimit', 'insert']);
+const ALLOWED_GET = new Set(['select', 'history', 'machines']);
+const ALLOWED_POST = new Set(['replace', 'updateruntime', 'updateruntimelimit', 'insert', 'machines']);
 
 function resolveComponentsPath(segments: string[] | undefined): { swfPath: string; error?: string } {
     const parts = segments ?? [];
