@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { proxyErrorPayload, proxySwfApi } from '@/lib/api/swfApiProxy';
 
 const ALLOWED_GET = new Set(['select', 'history', 'machines']);
-const ALLOWED_POST = new Set(['replace', 'updateruntime', 'updateruntimelimit', 'insert', 'machines']);
+const ALLOWED_POST = new Set([
+    'replace',
+    'updateruntime',
+    'updateruntimelimit',
+    'insert',
+    'machines',
+    'machines/visible'
+]);
 
 function resolveComponentsPath(segments: string[] | undefined): { swfPath: string; error?: string } {
     const parts = segments ?? [];
@@ -11,15 +18,16 @@ function resolveComponentsPath(segments: string[] | undefined): { swfPath: strin
     }
 
     if (parts[0] === 'sfcwr') {
-        const endpoint = parts[1];
-        if (!endpoint) {
+        const rest = parts.slice(1).join('/');
+        if (!rest) {
             return { swfPath: '', error: 'Missing endpoint after sfcwr' };
         }
-        return { swfPath: `sfcwr/${endpoint}` };
+        return { swfPath: `sfcwr/${rest}` };
     }
 
-    if (parts.length === 1) {
-        return { swfPath: parts[0] };
+    const rest = parts.join('/');
+    if (parts.length >= 1 && parts.length <= 2) {
+        return { swfPath: rest };
     }
 
     return { swfPath: '', error: `Invalid components API path: ${parts.join('/')}` };

@@ -29,6 +29,11 @@ export function isBuncherBoard(processCd: ProcessCd, lineCd: StrandLineCd | null
     return processCd === 'STRANDING' && lineCd === 'BUNCHER';
 }
 
+/** Buncher machine display names (BIN / registry) start with "BUN ". */
+export function isBuncherMachineName(machineName: string): boolean {
+    return /^BUN\s/i.test(String(machineName || '').trim());
+}
+
 export function processLabel(code: ProcessCd): string {
     return PROCESS_OPTIONS.find((p) => p.code === code)?.label ?? code;
 }

@@ -112,7 +112,22 @@ export async function fetchComponents(
         throw new Error(parseErrorMessage(body, res.status));
     }
 
-    return body;
+    // Defense: never paint another process/line's component rows
+    let rows = asRecordArray(body);
+    if (query?.processCd) {
+        const processCd = query.processCd.toUpperCase();
+        const lineCd = query.lineCd?.toUpperCase() ?? null;
+        rows = rows.filter((row) => {
+            const rowProcess = rowStr(row, 'PROCESS_CD').toUpperCase();
+            if (rowProcess && rowProcess !== processCd) return false;
+            if (processCd === 'STRANDING') {
+                const rowLine = rowStr(row, 'LINE_CD').toUpperCase();
+                if (!lineCd || !rowLine || rowLine !== lineCd) return false;
+            }
+            return true;
+        });
+    }
+    return rows;
 }
 
 function historyRowFromRecord(row: Record<string, unknown>): ComponentHistoryRow {

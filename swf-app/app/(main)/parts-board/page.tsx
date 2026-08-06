@@ -60,10 +60,11 @@ import {
     updateComponentRuntimeLimit,
     type ComponentHistoryRow
 } from '@/lib/roller-monitoring/componentsClient';
-import { fetchCmMachines, insertCmMachine } from '@/lib/roller-monitoring/cmMachineClient';
+import { fetchCmMachines, insertCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
 import { applyComponentsToMachines, machinesFromRegistry } from '@/lib/roller-monitoring/mergeComponents';
 import {
     isBuncherBoard,
+    isBuncherMachineName,
     PROCESS_OPTIONS,
     STRAND_LINE_OPTIONS,
     type ProcessCd,
@@ -593,7 +594,8 @@ function MachineCard({
     onOpenFullscreen,
     onOpenRoller,
     onOpenFixed,
-    onOpenCustom
+    onOpenCustom,
+    onHideMachine
 }: {
     machine: MachineDashboard;
     syncEpochMs: number;
@@ -604,6 +606,7 @@ function MachineCard({
     onOpenRoller: (live: LiveRoller) => void;
     onOpenFixed: (partKey: MachineFixedPartKey, part: FixedPartRow) => void;
     onOpenCustom: (part: FixedPartRow) => void;
+    onHideMachine?: () => void;
 }) {
     if (search && !machine.name.toLowerCase().includes(search)) return null;
 
@@ -621,6 +624,21 @@ function MachineCard({
             <header className="pb-machine__head">
                 <h3 className="pb-machine__name">{machine.name}</h3>
                 <div className="pb-machine__head-actions">
+                    {onHideMachine ? (
+                        <Button
+                            icon="pi pi-eye-slash"
+                            rounded
+                            text
+                            size="small"
+                            className="pb-machine__fs-btn"
+                            aria-label="Hide machine"
+                            tooltip="Hide machine in this process"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onHideMachine();
+                            }}
+                        />
+                    ) : null}
                     <Button
                         icon="pi pi-window-maximize"
                         rounded
@@ -768,6 +786,12 @@ export default function PartsBoardPage() {
     const [addMachineNameInput, setAddMachineNameInput] = useState('');
     const [addMachineCompany, setAddMachineCompany] = useState(COMPONENT_DEFAULT_COMPANY);
     const [addMachineFactory, setAddMachineFactory] = useState(COMPONENT_DEFAULT_FACTORY);
+    const [hiddenMachinesOpen, setHiddenMachinesOpen] = useState(false);
+    const [hiddenMachines, setHiddenMachines] = useState<{ machineName: string; company: string; factory: string }[]>(
+        []
+    );
+    const [hiddenMachinesLoading, setHiddenMachinesLoading] = useState(false);
+    const [hideMachineSaving, setHideMachineSaving] = useState(false);
     const machinesRef = useRef<MachineDashboard[]>([]);
     const syncEpochMsRef = useRef(Date.now());
     const processCdRef = useRef<ProcessCd>('STRANDING');
@@ -809,7 +833,16 @@ export default function PartsBoardPage() {
                     processCdRef.current === 'STRANDING' ? strandLineCdRef.current : null
                 );
                 if (!stillThisBoard) return;
-                const allowed = new Set(registry.map((m) => m.machineName));
+                const allowed = new Set(
+                    registry
+                        .filter((m) => m.visible)
+                        .filter((m) => {
+                            // Never paint Buncher machines on Tubular / other processes
+                            if (isBuncherBoard(activeProcess, activeLine)) return true;
+                            return !isBuncherMachineName(m.machineName);
+                        })
+                        .map((m) => m.machineName)
+                );
                 const shells = machinesFromRegistry([...allowed]);
                 const incoming = applyComponentsToMachines(shells, components).filter((m) =>
                     allowed.has(m.name)
@@ -823,14 +856,23 @@ export default function PartsBoardPage() {
             const prev = machinesRef.current;
             const syncMs = syncEpochMsRef.current;
             const saveNowMs = Date.now();
-            const data = await fetchRollerDashboard(target, {
-                processCd: activeProcess,
-                lineCd: activeLine
-            });
+            const [data, buncherRegistry] = await Promise.all([
+                fetchRollerDashboard(target, {
+                    processCd: activeProcess,
+                    lineCd: activeLine
+                }),
+                fetchCmMachines(activeProcess, activeLine, target).catch(() => [])
+            ]);
             if (gen !== loadGenRef.current) return;
             if (!isBuncherBoard(processCdRef.current, strandLineCdRef.current)) return;
 
+            // Prefer registry visibility when machines are registered for Buncher
+            const visibleRegistry = buncherRegistry.filter((m) => m.visible);
             let rollerMachines = data.machines;
+            if (visibleRegistry.length > 0) {
+                const allowedNames = new Set(visibleRegistry.map((m) => m.machineName));
+                rollerMachines = data.machines.filter((m) => allowedNames.has(m.name));
+            }
 
             const savedSecByPartId = new Map<string, number>();
             const savedRollerSecByBin = new Map<string, number>();
@@ -1314,6 +1356,121 @@ export default function PartsBoardPage() {
         }
     };
 
+    const handleHideMachine = async (machineName: string) => {
+        if (processCd === 'STRANDING' && !strandLineCd) {
+            toast.current?.show({ severity: 'warn', summary: 'Select Buncher or Tubular', life: 3000 });
+            return;
+        }
+        setHideMachineSaving(true);
+        const lineCd = processCd === 'STRANDING' ? strandLineCd : null;
+        try {
+            try {
+                await setCmMachineVisible(
+                    {
+                        processCd,
+                        lineCd,
+                        machineName,
+                        visible: false
+                    },
+                    dbTarget
+                );
+            } catch {
+                // Buncher roller machines may not be registered yet — add then hide
+                await insertCmMachine({ processCd, lineCd, machineName }, dbTarget);
+                await setCmMachineVisible({ processCd, lineCd, machineName, visible: false }, dbTarget);
+            }
+            toast.current?.show({
+                severity: 'success',
+                summary: 'Machine hidden',
+                detail: `${machineName} is hidden for this process. Use Hidden machines to restore.`,
+                life: 4000
+            });
+            await loadDashboard(true, dbTarget);
+        } catch (e) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Hide machine failed',
+                detail: e instanceof Error ? e.message : undefined,
+                life: 5000
+            });
+        } finally {
+            setHideMachineSaving(false);
+        }
+    };
+
+    const openHiddenMachines = async () => {
+        if (processCd === 'STRANDING' && !strandLineCd) {
+            toast.current?.show({ severity: 'warn', summary: 'Select Buncher or Tubular', life: 3000 });
+            return;
+        }
+        setHiddenMachinesOpen(true);
+        setHiddenMachinesLoading(true);
+        try {
+            const rows = await fetchCmMachines(processCd, processCd === 'STRANDING' ? strandLineCd : null, dbTarget, {
+                includeHidden: true
+            });
+            setHiddenMachines(
+                rows
+                    .filter((m) => !m.visible)
+                    .map((m) => ({
+                        machineName: m.machineName,
+                        company: m.company,
+                        factory: m.factory
+                    }))
+            );
+        } catch (e) {
+            setHiddenMachines([]);
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Could not load hidden machines',
+                detail: e instanceof Error ? e.message : undefined,
+                life: 5000
+            });
+        } finally {
+            setHiddenMachinesLoading(false);
+        }
+    };
+
+    const handleUnhideMachine = async (machineName: string, company?: string, factory?: string) => {
+        setHideMachineSaving(true);
+        try {
+            await setCmMachineVisible(
+                {
+                    processCd,
+                    lineCd: processCd === 'STRANDING' ? strandLineCd : null,
+                    machineName,
+                    visible: true,
+                    company,
+                    factory
+                },
+                dbTarget
+            );
+            toast.current?.show({ severity: 'success', summary: 'Machine restored', life: 3000 });
+            const rows = await fetchCmMachines(processCd, processCd === 'STRANDING' ? strandLineCd : null, dbTarget, {
+                includeHidden: true
+            });
+            setHiddenMachines(
+                rows
+                    .filter((m) => !m.visible)
+                    .map((m) => ({
+                        machineName: m.machineName,
+                        company: m.company,
+                        factory: m.factory
+                    }))
+            );
+            await loadDashboard(true, dbTarget);
+        } catch (e) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Restore machine failed',
+                detail: e instanceof Error ? e.message : undefined,
+                life: 5000
+            });
+        } finally {
+            setHideMachineSaving(false);
+        }
+    };
+
     const processTabIndex = Math.max(
         0,
         PROCESS_OPTIONS.findIndex((p) => p.code === processCd)
@@ -1550,6 +1707,14 @@ export default function PartsBoardPage() {
                         tooltip="Add machine"
                     />
                     <Button
+                        icon="pi pi-eye-slash"
+                        rounded
+                        outlined
+                        disabled={loading || hideMachineSaving}
+                        onClick={() => void openHiddenMachines()}
+                        tooltip="Hidden machines"
+                    />
+                    <Button
                         icon="pi pi-plus"
                         rounded
                         outlined
@@ -1645,6 +1810,15 @@ export default function PartsBoardPage() {
                             onOpenRoller={(lr) => openRollerEdit(machine, lr.roller)}
                             onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
                             onOpenCustom={(part) => openCustomEdit(machine, part)}
+                            onHideMachine={() => {
+                                if (
+                                    typeof window !== 'undefined' &&
+                                    !window.confirm(`Hide ${machine.name} from this process?`)
+                                ) {
+                                    return;
+                                }
+                                void handleHideMachine(machine.name);
+                            }}
                         />
                     ))}
                 </div>
@@ -2078,6 +2252,45 @@ export default function PartsBoardPage() {
                             onClick={() => void handleAddMachine()}
                         />
                     </div>
+                </div>
+            </Dialog>
+
+            <Dialog
+                className="pb-add-dialog"
+                header="Hidden machines"
+                visible={hiddenMachinesOpen}
+                style={{ width: 'min(92vw, 28rem)' }}
+                onHide={() => setHiddenMachinesOpen(false)}
+                dismissableMask
+            >
+                <div className="flex flex-column gap-3">
+                    <Message
+                        severity="info"
+                        text="Machines hidden for this process only. Restore to show them on the board again."
+                    />
+                    {hiddenMachinesLoading ? (
+                        <div className="flex justify-content-center p-3">
+                            <ProgressSpinner style={{ width: '2.5rem', height: '2.5rem' }} />
+                        </div>
+                    ) : hiddenMachines.length === 0 ? (
+                        <div className="text-color-secondary text-sm">No hidden machines for this process.</div>
+                    ) : (
+                        <ul className="pb-hidden-list">
+                            {hiddenMachines.map((m) => (
+                                <li key={m.machineName} className="pb-hidden-list__row">
+                                    <span className="pb-hidden-list__name">{m.machineName}</span>
+                                    <Button
+                                        label="Show"
+                                        icon="pi pi-eye"
+                                        size="small"
+                                        text
+                                        loading={hideMachineSaving}
+                                        onClick={() => void handleUnhideMachine(m.machineName, m.company, m.factory)}
+                                    />
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                 </div>
             </Dialog>
 
