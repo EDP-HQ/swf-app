@@ -60,7 +60,7 @@ async function handle(req: NextRequest, segments: string[] | undefined) {
     }
 
     try {
-        const { res, body } = await proxySwfApi(`/roller/${swfPath}`, init);
+        const { res, body } = await proxySwfApi(`/roller/${swfPath}`, init, req.nextUrl.search);
         if (!res.ok) {
             const msg =
                 body &&

@@ -4,11 +4,18 @@ export function swfApiBaseUrl(): string {
     return (process.env.SWF_API_URL || DEFAULT_SWF_API).replace(/\/$/, '');
 }
 
+/**
+ * Proxy a path to swf-api. Pass `search` (e.g. req.nextUrl.search) so GET query
+ * params like process_cd / line_cd are forwarded — otherwise SPs run unscoped.
+ */
 export async function proxySwfApi(
     path: string,
-    init?: RequestInit
+    init?: RequestInit,
+    search?: string
 ): Promise<{ res: Response; body: unknown }> {
-    const url = `${swfApiBaseUrl()}${path.startsWith('/') ? path : `/${path}`}`;
+    const basePath = path.startsWith('/') ? path : `/${path}`;
+    const qs = !search ? '' : search.startsWith('?') ? search : `?${search}`;
+    const url = `${swfApiBaseUrl()}${basePath}${qs}`;
 
     let res: Response;
     try {
