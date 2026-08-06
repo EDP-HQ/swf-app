@@ -126,25 +126,31 @@ export async function fetchRollerDashboard(
     scope: { processCd?: string; lineCd?: string | null } = {
         processCd: 'STRANDING',
         lineCd: 'BUNCHER'
-    }
+    },
+    options?: { includeComponents?: boolean }
 ): Promise<RollerDashboardData> {
     const processCd = scope.processCd ?? 'STRANDING';
     const lineCd = scope.lineCd ?? null;
     const q = { processCd, lineCd };
+    const includeComponents = options?.includeComponents !== false;
 
     const [list, onoff, activeList, currentRuntime, components] = await Promise.all([
         fetchRollerEndpoint('list', undefined, target, q),
         fetchRollerEndpoint('onoff', undefined, target),
         fetchRollerEndpoint('activelist', undefined, target, q),
         fetchRollerEndpoint('currentruntime', undefined, target, q),
-        fetchComponents(target, { processCd, lineCd: lineCd ?? undefined }).catch(() => [])
+        includeComponents
+            ? fetchComponents(target, { processCd, lineCd: lineCd ?? undefined }).catch(() => [])
+            : Promise.resolve([])
     ]);
 
     const dashboard = mergeRollerDashboard({ list, onoff, activeList, currentRuntime });
 
     return {
         ...dashboard,
-        machines: applyComponentsToMachines(dashboard.machines, components)
+        machines: includeComponents
+            ? applyComponentsToMachines(dashboard.machines, components)
+            : dashboard.machines
     };
 }
 

@@ -91,6 +91,28 @@ export function machinesFromRegistry(machineNames: string[]): MachineDashboard[]
         );
 }
 
+/**
+ * Registry defines which machines appear. Overlay roller runtime / on-off when present.
+ * Machines with no roller data stay as empty shells (newly added).
+ */
+export function applyRollersToRegistryMachines(
+    registryMachines: MachineDashboard[],
+    rollerMachines: MachineDashboard[]
+): MachineDashboard[] {
+    if (!registryMachines.length) return [];
+    const byName = new Map(rollerMachines.map((m) => [m.name, m]));
+    return registryMachines.map((shell) => {
+        const src = byName.get(shell.name);
+        if (!src) return shell;
+        return recountMachine({
+            ...shell,
+            machineNo: src.machineNo || shell.machineNo,
+            running: src.running,
+            rollers: src.rollers
+        });
+    });
+}
+
 /** Overlay DB component rows onto machines (gearbox + skipper SF/SB + custom parts). */
 export function applyComponentsToMachines(
     machines: MachineDashboard[],

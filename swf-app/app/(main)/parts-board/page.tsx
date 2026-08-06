@@ -61,7 +61,7 @@ import {
     type ComponentHistoryRow
 } from '@/lib/roller-monitoring/componentsClient';
 import { fetchCmMachines, insertCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
-import { applyComponentsToMachines, machinesFromRegistry } from '@/lib/roller-monitoring/mergeComponents';
+import { applyComponentsToMachines, applyRollersToRegistryMachines, machinesFromRegistry } from '@/lib/roller-monitoring/mergeComponents';
 import {
     isBuncherBoard,
     isBuncherMachineName,
@@ -614,10 +614,13 @@ function MachineCard({
         ? []
         : machine.rollers.map((r) => buildLiveRoller(r, machine, syncEpochMs, nowMs));
 
-    if (!componentsOnly && liveRollers.length === 0) return null;
-
     const showFixed = (part: FixedPartRow) => !componentsOnly || !!part.partId;
     const cardTone = machine.running ? 'run' : 'idle';
+    const hasAnyComponent =
+        !!machine.gearbox.partId ||
+        !!machine.skipperFront.partId ||
+        !!machine.skipperBack.partId ||
+        machine.extraParts.length > 0;
 
     return (
         <article className={`pb-machine pb-machine--${cardTone}`}>
@@ -714,24 +717,28 @@ function MachineCard({
                             onSelect={() => onOpenCustom(part)}
                         />
                     ))}
-                    {componentsOnly &&
-                    !machine.gearbox.partId &&
-                    !machine.skipperFront.partId &&
-                    !machine.skipperBack.partId &&
-                    machine.extraParts.length === 0 ? (
+                    {componentsOnly && !hasAnyComponent ? (
                         <p className="pb-machine__empty-parts">No components yet — use Add component</p>
                     ) : null}
                 </div>
 
                 {!componentsOnly ? (
                     <div className="pb-machine__tiles">
-                        {liveRollers.map((lr) => (
-                            <RollerTile
-                                key={rollerRowKey(machine.name, lr.roller, machine.rollers.indexOf(lr.roller))}
-                                live={lr}
-                                onSelect={() => onOpenRoller(lr)}
-                            />
-                        ))}
+                        {liveRollers.length === 0 ? (
+                            <p className="pb-machine__empty-parts">
+                                {hasAnyComponent
+                                    ? 'No rollers linked yet'
+                                    : 'No rollers or components yet — use Add component'}
+                            </p>
+                        ) : (
+                            liveRollers.map((lr) => (
+                                <RollerTile
+                                    key={rollerRowKey(machine.name, lr.roller, machine.rollers.indexOf(lr.roller))}
+                                    live={lr}
+                                    onSelect={() => onOpenRoller(lr)}
+                                />
+                            ))
+                        )}
                     </div>
                 ) : null}
             </div>
@@ -819,123 +826,122 @@ export default function PartsBoardPage() {
             const activeLine = activeProcess === 'STRANDING' ? strandLineCdRef.current : null;
             const useBuncher = isBuncherBoard(activeProcess, activeLine);
 
-            if (!useBuncher) {
-                const [registry, components] = await Promise.all([
-                    fetchCmMachines(activeProcess, activeLine, target),
-                    fetchComponents(target, {
-                        processCd: activeProcess,
-                        lineCd: activeLine
-                    })
-                ]);
+            // 1) Registered visible machines are the board source of truth
+            // 2) Overlay rollers (Buncher) + components onto those shells
+            const [registry, rollerData, components] = await Promise.all([
+                fetchCmMachines(activeProcess, activeLine, target),
+                useBuncher
+                    ? fetchRollerDashboard(
+                          target,
+                          { processCd: activeProcess, lineCd: activeLine },
+                          { includeComponents: false }
+                      )
+                    : Promise.resolve(null),
+                fetchComponents(target, {
+                    processCd: activeProcess,
+                    lineCd: activeLine
+                })
+            ]);
+
+            if (gen !== loadGenRef.current) return;
+
+            const boardStillMatches =
+                processCdRef.current === activeProcess &&
+                (activeProcess !== 'STRANDING' || strandLineCdRef.current === activeLine);
+            if (!boardStillMatches) return;
+
+            const allowedNames = registry
+                .filter((m) => m.visible)
+                .filter((m) => {
+                    if (useBuncher) return true;
+                    return !isBuncherMachineName(m.machineName);
+                })
+                .map((m) => m.machineName);
+
+            let incoming = machinesFromRegistry(allowedNames);
+
+            if (useBuncher && rollerData) {
+                const prev = machinesRef.current;
+                const syncMs = syncEpochMsRef.current;
+                const saveNowMs = Date.now();
+
+                incoming = applyRollersToRegistryMachines(incoming, rollerData.machines);
+
+                const savedSecByPartId = new Map<string, number>();
+                const savedRollerSecByBin = new Map<string, number>();
+                const saveTasks: Promise<void>[] = [];
+
+                for (const newM of incoming) {
+                    const oldM = prev.find((p) => p.name === newM.name);
+                    if (!oldM) continue;
+
+                    for (const snap of rollersStoppedTicking(oldM, newM, syncMs, saveNowMs)) {
+                        if (!snap.roller.rollerId && !snap.roller.binLocation) continue;
+                        savedRollerSecByBin.set(snap.roller.binLocation, snap.runtimeSec);
+                        saveTasks.push(
+                            updateRollerRuntime(snap.runtimeSec, target, {
+                                rollerId: snap.roller.rollerId,
+                                binLocation: snap.roller.binLocation
+                            })
+                        );
+                    }
+
+                    if (!oldM.running || newM.running) continue;
+
+                    for (const snap of allComponentLiveSnapshots(oldM, syncMs, saveNowMs)) {
+                        if (!snap.part.partId) continue;
+                        savedSecByPartId.set(snap.part.partId, snap.runtimeSec);
+                        saveTasks.push(
+                            updateComponentRuntime(snap.runtimeSec, target, {
+                                partId: snap.part.partId,
+                                ...(snap.partKey
+                                    ? { machineName: oldM.name, partKey: snap.partKey }
+                                    : {})
+                            })
+                        );
+                    }
+                }
+
+                if (saveTasks.length > 0) {
+                    try {
+                        await Promise.all(saveTasks);
+                    } catch (saveErr) {
+                        toast.current?.show({
+                            severity: 'warn',
+                            summary: 'Runtime save failed',
+                            detail: saveErr instanceof Error ? saveErr.message : undefined,
+                            life: 5000
+                        });
+                    }
+                }
+
+                if (savedRollerSecByBin.size > 0) {
+                    incoming = incoming.map((m) => applySavedRollerRuntime(m, savedRollerSecByBin));
+                }
+                if (savedSecByPartId.size > 0) {
+                    incoming = incoming.map((m) => applySavedAllComponentRuntime(m, savedSecByPartId));
+                }
+
+                incoming = applyComponentsToMachines(incoming, components);
+
                 if (gen !== loadGenRef.current) return;
-                const stillThisBoard = !isBuncherBoard(
-                    processCdRef.current,
-                    processCdRef.current === 'STRANDING' ? strandLineCdRef.current : null
-                );
-                if (!stillThisBoard) return;
-                const allowed = new Set(
-                    registry
-                        .filter((m) => m.visible)
-                        .filter((m) => {
-                            // Never paint Buncher machines on Tubular / other processes
-                            if (isBuncherBoard(activeProcess, activeLine)) return true;
-                            return !isBuncherMachineName(m.machineName);
-                        })
-                        .map((m) => m.machineName)
-                );
-                const shells = machinesFromRegistry([...allowed]);
-                const incoming = applyComponentsToMachines(shells, components).filter((m) =>
-                    allowed.has(m.name)
-                );
-                setMachines(incoming);
-                setLastSync(new Date().toISOString());
+                if (
+                    processCdRef.current !== activeProcess ||
+                    strandLineCdRef.current !== activeLine
+                ) {
+                    return;
+                }
+
+                const elapsed = (Date.now() - syncMs) / 3_600_000;
+                setMachines((prevState) => mergePreservedMachines(incoming, prevState, elapsed));
+                setLastSync(rollerData.lastSync);
                 setSyncEpochMs(Date.now());
                 return;
             }
 
-            const prev = machinesRef.current;
-            const syncMs = syncEpochMsRef.current;
-            const saveNowMs = Date.now();
-            const [data, buncherRegistry] = await Promise.all([
-                fetchRollerDashboard(target, {
-                    processCd: activeProcess,
-                    lineCd: activeLine
-                }),
-                fetchCmMachines(activeProcess, activeLine, target).catch(() => [])
-            ]);
-            if (gen !== loadGenRef.current) return;
-            if (!isBuncherBoard(processCdRef.current, strandLineCdRef.current)) return;
-
-            // Prefer registry visibility when machines are registered for Buncher
-            const visibleRegistry = buncherRegistry.filter((m) => m.visible);
-            let rollerMachines = data.machines;
-            if (visibleRegistry.length > 0) {
-                const allowedNames = new Set(visibleRegistry.map((m) => m.machineName));
-                rollerMachines = data.machines.filter((m) => allowedNames.has(m.name));
-            }
-
-            const savedSecByPartId = new Map<string, number>();
-            const savedRollerSecByBin = new Map<string, number>();
-            const saveTasks: Promise<void>[] = [];
-
-            for (const newM of rollerMachines) {
-                const oldM = prev.find((p) => p.name === newM.name);
-                if (!oldM) continue;
-
-                for (const snap of rollersStoppedTicking(oldM, newM, syncMs, saveNowMs)) {
-                    if (!snap.roller.rollerId && !snap.roller.binLocation) continue;
-                    savedRollerSecByBin.set(snap.roller.binLocation, snap.runtimeSec);
-                    saveTasks.push(
-                        updateRollerRuntime(snap.runtimeSec, target, {
-                            rollerId: snap.roller.rollerId,
-                            binLocation: snap.roller.binLocation
-                        })
-                    );
-                }
-
-                if (!oldM.running || newM.running) continue;
-
-                for (const snap of allComponentLiveSnapshots(oldM, syncMs, saveNowMs)) {
-                    if (!snap.part.partId) continue;
-                    savedSecByPartId.set(snap.part.partId, snap.runtimeSec);
-                    saveTasks.push(
-                        updateComponentRuntime(snap.runtimeSec, target, {
-                            partId: snap.part.partId,
-                            ...(snap.partKey
-                                ? { machineName: oldM.name, partKey: snap.partKey }
-                                : {})
-                        })
-                    );
-                }
-            }
-
-            if (saveTasks.length > 0) {
-                try {
-                    await Promise.all(saveTasks);
-                } catch (saveErr) {
-                    toast.current?.show({
-                        severity: 'warn',
-                        summary: 'Runtime save failed',
-                        detail: saveErr instanceof Error ? saveErr.message : undefined,
-                        life: 5000
-                    });
-                }
-            }
-
-            let incoming = rollerMachines;
-            if (savedRollerSecByBin.size > 0) {
-                incoming = incoming.map((m) => applySavedRollerRuntime(m, savedRollerSecByBin));
-            }
-            if (savedSecByPartId.size > 0) {
-                incoming = incoming.map((m) => applySavedAllComponentRuntime(m, savedSecByPartId));
-            }
-
-            if (gen !== loadGenRef.current) return;
-            if (!isBuncherBoard(processCdRef.current, strandLineCdRef.current)) return;
-
-            const elapsed = (Date.now() - syncMs) / 3_600_000;
-            setMachines((prevState) => mergePreservedMachines(incoming, prevState, elapsed));
-            setLastSync(data.lastSync);
+            incoming = applyComponentsToMachines(incoming, components);
+            setMachines(incoming);
+            setLastSync(new Date().toISOString());
             setSyncEpochMs(Date.now());
         } catch (e) {
             if (gen !== loadGenRef.current) return;
@@ -1364,21 +1370,15 @@ export default function PartsBoardPage() {
         setHideMachineSaving(true);
         const lineCd = processCd === 'STRANDING' ? strandLineCd : null;
         try {
-            try {
-                await setCmMachineVisible(
-                    {
-                        processCd,
-                        lineCd,
-                        machineName,
-                        visible: false
-                    },
-                    dbTarget
-                );
-            } catch {
-                // Buncher roller machines may not be registered yet — add then hide
-                await insertCmMachine({ processCd, lineCd, machineName }, dbTarget);
-                await setCmMachineVisible({ processCd, lineCd, machineName, visible: false }, dbTarget);
-            }
+            await setCmMachineVisible(
+                {
+                    processCd,
+                    lineCd,
+                    machineName,
+                    visible: false
+                },
+                dbTarget
+            );
             toast.current?.show({
                 severity: 'success',
                 summary: 'Machine hidden',
@@ -1792,9 +1792,7 @@ export default function PartsBoardPage() {
                 </div>
             ) : visibleMachines.length === 0 ? (
                 <div className="pb-empty">
-                    {buncherBoard
-                        ? 'No machines match this view'
-                        : 'No machines registered for this process yet. Click Add machine to key one in.'}
+                    No machines registered for this process yet. Click Add machine to key one in.
                 </div>
             ) : (
                 <div className="pb-machine-grid">

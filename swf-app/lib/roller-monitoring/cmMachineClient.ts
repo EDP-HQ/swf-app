@@ -95,7 +95,7 @@ export async function fetchCmMachines(
         .filter((m) => {
             if (m.processCd && m.processCd !== processCd) return false;
             if (processCd === 'STRANDING') {
-                if (!lineCd || (m.lineCd && m.lineCd !== lineCd)) return false;
+                if (!lineCd || m.lineCd !== lineCd) return false;
             } else if (m.lineCd) {
                 return false;
             }
