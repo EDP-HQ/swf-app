@@ -772,6 +772,8 @@ export default function PartsBoardPage() {
     const syncEpochMsRef = useRef(Date.now());
     const processCdRef = useRef<ProcessCd>('STRANDING');
     const strandLineCdRef = useRef<StrandLineCd>('BUNCHER');
+    /** Bumps on each load / tab change so stale Buncher roller fetches cannot overwrite other processes. */
+    const loadGenRef = useRef(0);
 
     const buncherBoard = isBuncherBoard(processCd, strandLineCd);
 
@@ -783,15 +785,11 @@ export default function PartsBoardPage() {
         syncEpochMsRef.current = syncEpochMs;
     }, [syncEpochMs]);
 
-    useEffect(() => {
-        processCdRef.current = processCd;
-        strandLineCdRef.current = strandLineCd;
-    }, [processCd, strandLineCd]);
-
     const loadDashboard = useCallback(async (silent = false, target = getRollerDbTarget()) => {
         if (!silent) setLoading(true);
         else setRefreshing(true);
         setError(null);
+        const gen = ++loadGenRef.current;
         try {
             const activeProcess = processCdRef.current;
             const activeLine = activeProcess === 'STRANDING' ? strandLineCdRef.current : null;
@@ -802,8 +800,17 @@ export default function PartsBoardPage() {
                     fetchCmMachines(activeProcess, activeLine, target),
                     fetchComponents(target)
                 ]);
-                const shells = machinesFromRegistry(registry.map((m) => m.machineName));
-                const incoming = applyComponentsToMachines(shells, components);
+                if (gen !== loadGenRef.current) return;
+                const stillThisBoard = !isBuncherBoard(
+                    processCdRef.current,
+                    processCdRef.current === 'STRANDING' ? strandLineCdRef.current : null
+                );
+                if (!stillThisBoard) return;
+                const allowed = new Set(registry.map((m) => m.machineName));
+                const shells = machinesFromRegistry([...allowed]);
+                const incoming = applyComponentsToMachines(shells, components).filter((m) =>
+                    allowed.has(m.name)
+                );
                 setMachines(incoming);
                 setLastSync(new Date().toISOString());
                 setSyncEpochMs(Date.now());
@@ -813,13 +820,25 @@ export default function PartsBoardPage() {
             const prev = machinesRef.current;
             const syncMs = syncEpochMsRef.current;
             const saveNowMs = Date.now();
-            const data = await fetchRollerDashboard(target);
+            const [data, buncherRegistry] = await Promise.all([
+                fetchRollerDashboard(target),
+                fetchCmMachines('STRANDING', 'BUNCHER', target).catch(() => [] as Awaited<ReturnType<typeof fetchCmMachines>>)
+            ]);
+            if (gen !== loadGenRef.current) return;
+            if (!isBuncherBoard(processCdRef.current, strandLineCdRef.current)) return;
+
+            const allowedNames = new Set(buncherRegistry.map((m) => m.machineName));
+            // Prefer registry filter when available; otherwise keep roller SP list (legacy).
+            let rollerMachines =
+                allowedNames.size > 0
+                    ? data.machines.filter((m) => allowedNames.has(m.name))
+                    : data.machines;
 
             const savedSecByPartId = new Map<string, number>();
             const savedRollerSecByBin = new Map<string, number>();
             const saveTasks: Promise<void>[] = [];
 
-            for (const newM of data.machines) {
+            for (const newM of rollerMachines) {
                 const oldM = prev.find((p) => p.name === newM.name);
                 if (!oldM) continue;
 
@@ -863,7 +882,7 @@ export default function PartsBoardPage() {
                 }
             }
 
-            let incoming = data.machines;
+            let incoming = rollerMachines;
             if (savedRollerSecByBin.size > 0) {
                 incoming = incoming.map((m) => applySavedRollerRuntime(m, savedRollerSecByBin));
             }
@@ -871,15 +890,21 @@ export default function PartsBoardPage() {
                 incoming = incoming.map((m) => applySavedAllComponentRuntime(m, savedSecByPartId));
             }
 
+            if (gen !== loadGenRef.current) return;
+            if (!isBuncherBoard(processCdRef.current, strandLineCdRef.current)) return;
+
             const elapsed = (Date.now() - syncMs) / 3_600_000;
             setMachines((prevState) => mergePreservedMachines(incoming, prevState, elapsed));
             setLastSync(data.lastSync);
             setSyncEpochMs(Date.now());
         } catch (e) {
+            if (gen !== loadGenRef.current) return;
             setError(e instanceof Error ? e.message : 'Load failed');
         } finally {
-            setLoading(false);
-            setRefreshing(false);
+            if (gen === loadGenRef.current) {
+                setLoading(false);
+                setRefreshing(false);
+            }
         }
     }, []);
 
@@ -898,6 +923,9 @@ export default function PartsBoardPage() {
     }, []);
 
     useEffect(() => {
+        loadGenRef.current += 1;
+        processCdRef.current = processCd;
+        strandLineCdRef.current = strandLineCd;
         setMachines([]);
         setFullscreenMachineName(null);
         setSelectedPart(null);
@@ -1560,7 +1588,10 @@ export default function PartsBoardPage() {
                     activeIndex={processTabIndex}
                     onTabChange={(e) => {
                         const next = PROCESS_OPTIONS[e.index]?.code;
-                        if (next) setProcessCd(next);
+                        if (!next || next === processCd) return;
+                        loadGenRef.current += 1;
+                        processCdRef.current = next;
+                        setProcessCd(next);
                     }}
                 >
                     {PROCESS_OPTIONS.map((p) => (
@@ -1573,7 +1604,10 @@ export default function PartsBoardPage() {
                         activeIndex={strandLineTabIndex}
                         onTabChange={(e) => {
                             const next = STRAND_LINE_OPTIONS[e.index]?.code;
-                            if (next) setStrandLineCd(next);
+                            if (!next || next === strandLineCd) return;
+                            loadGenRef.current += 1;
+                            strandLineCdRef.current = next;
+                            setStrandLineCd(next);
                         }}
                     >
                         {STRAND_LINE_OPTIONS.map((p) => (
