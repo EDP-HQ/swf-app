@@ -68,12 +68,20 @@ function parseErrorMessage(body: unknown, status: number): string {
 
 export async function fetchComponents(
     target = getRollerDbTarget(),
-    query?: { company?: string; factory?: string; machineNm?: string }
+    query?: {
+        company?: string;
+        factory?: string;
+        machineNm?: string;
+        processCd?: string;
+        lineCd?: string | null;
+    }
 ): Promise<unknown> {
     const params = new URLSearchParams();
     if (query?.company) params.set('company', query.company);
     if (query?.factory) params.set('factory', query.factory);
     if (query?.machineNm) params.set('machine_nm', query.machineNm);
+    if (query?.processCd) params.set('process_cd', query.processCd);
+    if (query?.lineCd) params.set('line_cd', query.lineCd);
 
     const qs = params.toString();
     const url = `${resolveComponentsUrl('select', target)}${qs ? `?${qs}` : ''}`;
@@ -285,6 +293,8 @@ export async function insertComponent(
         partType?: string;
         company?: string;
         factory?: string;
+        processCd?: string;
+        lineCd?: string | null;
     } = {}
 ): Promise<void> {
     const partKey = options.partKey;
@@ -304,7 +314,9 @@ export async function insertComponent(
                 RuntimeLimit: runtimeLimitHours,
                 Company: options.company ?? 'KSB',
                 Factory: options.factory ?? 'F002',
-                PartType: partType
+                PartType: partType,
+                ProcessCd: options.processCd ?? 'STRANDING',
+                LineCd: options.lineCd ?? null
             }
         },
         target

@@ -80,107 +80,72 @@ function parseErrorMessage(body: unknown, status: number): string {
 
 
 async function fetchRollerEndpoint<T = unknown>(
-
     endpoint: RollerApiEndpoint,
-
     init?: RequestInit,
-
-    target = getRollerDbTarget()
-
+    target = getRollerDbTarget(),
+    query?: { processCd?: string; lineCd?: string | null }
 ): Promise<T> {
-
-    const url = resolveRollerUrl(endpoint, target);
-
-
+    const params = new URLSearchParams();
+    if (query?.processCd) params.set('process_cd', query.processCd);
+    if (query?.lineCd) params.set('line_cd', query.lineCd);
+    const qs = params.toString();
+    const url = `${resolveRollerUrl(endpoint, target)}${qs ? `?${qs}` : ''}`;
 
     let res: Response;
-
     try {
-
         res = await fetch(url, {
-
             cache: 'no-store',
-
             headers: { Accept: 'application/json', ...(init?.headers || {}) },
-
             ...init
-
         });
-
     } catch (e) {
-
         const direct = directApiBase();
-
         const hint = direct
-
             ? `Cannot reach swf-api at ${direct}. Start swf-api (port 3200).`
-
             : 'Cannot reach API. Start swf-api and swf-app, or set NEXT_PUBLIC_SWF_API_URL in .env.local.';
-
         const detail = e instanceof Error ? e.message : 'Network error';
-
         throw new Error(`${hint} (${detail})`);
-
     }
-
-
 
     let body: unknown = null;
-
     try {
-
         body = await res.json();
-
     } catch {
-
         body = null;
-
     }
-
-
 
     if (!res.ok) {
-
         throw new Error(parseErrorMessage(body, res.status));
-
     }
 
-
-
     return body as T;
-
 }
 
-
-
-export async function fetchRollerDashboard(target = getRollerDbTarget()): Promise<RollerDashboardData> {
+export async function fetchRollerDashboard(
+    target = getRollerDbTarget(),
+    scope: { processCd?: string; lineCd?: string | null } = {
+        processCd: 'STRANDING',
+        lineCd: 'BUNCHER'
+    }
+): Promise<RollerDashboardData> {
+    const processCd = scope.processCd ?? 'STRANDING';
+    const lineCd = scope.lineCd ?? null;
+    const q = { processCd, lineCd };
 
     const [list, onoff, activeList, currentRuntime, components] = await Promise.all([
-
-        fetchRollerEndpoint('list', undefined, target),
-
+        fetchRollerEndpoint('list', undefined, target, q),
         fetchRollerEndpoint('onoff', undefined, target),
-
-        fetchRollerEndpoint('activelist', undefined, target),
-
-        fetchRollerEndpoint('currentruntime', undefined, target),
-
-        fetchComponents(target).catch(() => [])
-
+        fetchRollerEndpoint('activelist', undefined, target, q),
+        fetchRollerEndpoint('currentruntime', undefined, target, q),
+        fetchComponents(target, { processCd, lineCd: lineCd ?? undefined }).catch(() => [])
     ]);
-
-
 
     const dashboard = mergeRollerDashboard({ list, onoff, activeList, currentRuntime });
 
     return {
-
         ...dashboard,
-
         machines: applyComponentsToMachines(dashboard.machines, components)
-
     };
-
 }
 
 

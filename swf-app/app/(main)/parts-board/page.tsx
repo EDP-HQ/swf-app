@@ -798,7 +798,10 @@ export default function PartsBoardPage() {
             if (!useBuncher) {
                 const [registry, components] = await Promise.all([
                     fetchCmMachines(activeProcess, activeLine, target),
-                    fetchComponents(target)
+                    fetchComponents(target, {
+                        processCd: activeProcess,
+                        lineCd: activeLine
+                    })
                 ]);
                 if (gen !== loadGenRef.current) return;
                 const stillThisBoard = !isBuncherBoard(
@@ -820,19 +823,14 @@ export default function PartsBoardPage() {
             const prev = machinesRef.current;
             const syncMs = syncEpochMsRef.current;
             const saveNowMs = Date.now();
-            const [data, buncherRegistry] = await Promise.all([
-                fetchRollerDashboard(target),
-                fetchCmMachines('STRANDING', 'BUNCHER', target).catch(() => [] as Awaited<ReturnType<typeof fetchCmMachines>>)
-            ]);
+            const data = await fetchRollerDashboard(target, {
+                processCd: activeProcess,
+                lineCd: activeLine
+            });
             if (gen !== loadGenRef.current) return;
             if (!isBuncherBoard(processCdRef.current, strandLineCdRef.current)) return;
 
-            const allowedNames = new Set(buncherRegistry.map((m) => m.machineName));
-            // Prefer registry filter when available; otherwise keep roller SP list (legacy).
-            let rollerMachines =
-                allowedNames.size > 0
-                    ? data.machines.filter((m) => allowedNames.has(m.name))
-                    : data.machines;
+            let rollerMachines = data.machines;
 
             const savedSecByPartId = new Map<string, number>();
             const savedRollerSecByBin = new Map<string, number>();
@@ -1456,13 +1454,17 @@ export default function PartsBoardPage() {
                 await insertComponent(addMachineName, addLimitHours, dbTarget, {
                     partType: name.toUpperCase(),
                     company: addCompany.trim(),
-                    factory: addFactory.trim()
+                    factory: addFactory.trim(),
+                    processCd,
+                    lineCd: processCd === 'STRANDING' ? strandLineCd : null
                 });
             } else {
                 await insertComponent(addMachineName, addLimitHours, dbTarget, {
                     partKey: addPartChoice,
                     company: addCompany.trim(),
-                    factory: addFactory.trim()
+                    factory: addFactory.trim(),
+                    processCd,
+                    lineCd: processCd === 'STRANDING' ? strandLineCd : null
                 });
             }
             toast.current?.show({ severity: 'success', summary: 'Component added', life: 3000 });
