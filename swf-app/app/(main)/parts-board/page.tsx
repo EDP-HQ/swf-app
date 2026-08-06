@@ -826,20 +826,27 @@ export default function PartsBoardPage() {
             const activeLine = activeProcess === 'STRANDING' ? strandLineCdRef.current : null;
             const useBuncher = isBuncherBoard(activeProcess, activeLine);
 
-            // 1) Registered visible machines are the board source of truth
-            // 2) Overlay rollers (Buncher) + components onto those shells
-            const [registry, rollerData, components] = await Promise.all([
-                fetchCmMachines(activeProcess, activeLine, target),
+            // Registry is required. Rollers/components are overlays — soft-fail so machines still show.
+            const registry = await fetchCmMachines(activeProcess, activeLine, target);
+            if (gen !== loadGenRef.current) return;
+
+            const [rollerData, components] = await Promise.all([
                 useBuncher
                     ? fetchRollerDashboard(
                           target,
                           { processCd: activeProcess, lineCd: activeLine },
                           { includeComponents: false }
-                      )
+                      ).catch((e) => {
+                          console.warn('roller overlay failed', e);
+                          return null;
+                      })
                     : Promise.resolve(null),
                 fetchComponents(target, {
                     processCd: activeProcess,
                     lineCd: activeLine
+                }).catch((e) => {
+                    console.warn('components overlay failed', e);
+                    return [];
                 })
             ]);
 
@@ -852,10 +859,7 @@ export default function PartsBoardPage() {
 
             const allowedNames = registry
                 .filter((m) => m.visible)
-                .filter((m) => {
-                    if (useBuncher) return true;
-                    return !isBuncherMachineName(m.machineName);
-                })
+                .filter((m) => (useBuncher ? true : !isBuncherMachineName(m.machineName)))
                 .map((m) => m.machineName);
 
             let incoming = machinesFromRegistry(allowedNames);
@@ -946,6 +950,7 @@ export default function PartsBoardPage() {
         } catch (e) {
             if (gen !== loadGenRef.current) return;
             setError(e instanceof Error ? e.message : 'Load failed');
+            setMachines([]);
         } finally {
             if (gen === loadGenRef.current) {
                 setLoading(false);
@@ -969,7 +974,6 @@ export default function PartsBoardPage() {
     }, []);
 
     useEffect(() => {
-        loadGenRef.current += 1;
         processCdRef.current = processCd;
         strandLineCdRef.current = strandLineCd;
         setMachines([]);

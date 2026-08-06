@@ -88,17 +88,14 @@ export async function fetchCmMachines(
 
     if (!res.ok) throw new Error(parseErrorMessage(body, res.status));
 
-    // Defense: never accept another process/line's registry rows
+    // Defense: drop clear mismatches only. Trust API scoping for process/line.
     return asRecordArray(body)
         .map(mapMachine)
         .filter((m) => m.machineName)
         .filter((m) => {
             if (m.processCd && m.processCd !== processCd) return false;
-            if (processCd === 'STRANDING') {
-                if (!lineCd || m.lineCd !== lineCd) return false;
-            } else if (m.lineCd) {
-                return false;
-            }
+            if (processCd === 'STRANDING' && lineCd && m.lineCd && m.lineCd !== lineCd) return false;
+            if (processCd !== 'STRANDING' && m.lineCd) return false;
             return true;
         })
         .sort((a, b) => a.machineName.localeCompare(b.machineName));
