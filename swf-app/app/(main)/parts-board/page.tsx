@@ -1262,32 +1262,67 @@ export default function PartsBoardPage() {
         }
 
         const isGearbox =
+            selectedPart.part.partKind === 'gearbox' ||
             (selectedPart.kind === 'fixed' && selectedPart.partKey === 'gearbox') ||
-            selectedPart.part.partType?.toUpperCase() === 'GEARBOX';
+            selectedPart.part.partType?.toUpperCase() === 'GEARBOX' ||
+            selectedPart.part.displayName?.toLowerCase() === 'gearbox';
 
-        if (isGearbox && processCd === 'STRANDING' && strandLineCd) {
-            if (!spareGearboxId) {
+        // Gearbox must never call sp_Components_Replace (pool swap only)
+        if (isGearbox) {
+            if (processCd !== 'STRANDING' || !strandLineCd) {
                 toast.current?.show({
                     severity: 'warn',
-                    summary: 'Select a spare gearbox',
-                    life: 3000
+                    summary: 'Gearbox swap is for Stranding (Buncher/Tubular)',
+                    life: 4000
                 });
                 return;
             }
+
+            let mountId = spareGearboxId;
+            if (!mountId) {
+                try {
+                    const spares = await fetchGearboxAssets(processCd, strandLineCd, dbTarget, {
+                        status: 'SPARE'
+                    });
+                    setGearboxSpares(spares);
+                    mountId = spares[0]?.gearboxId ?? null;
+                    setSpareGearboxId(mountId);
+                } catch (e) {
+                    toast.current?.show({
+                        severity: 'error',
+                        summary: 'Cannot load spare gearboxes',
+                        detail: e instanceof Error ? e.message : undefined,
+                        life: 5000
+                    });
+                    return;
+                }
+            }
+
+            if (!mountId) {
+                toast.current?.show({
+                    severity: 'warn',
+                    summary: 'No spare gearbox available',
+                    detail: 'Mark a unit as SPARE first (or free one from REPAIR).',
+                    life: 5000
+                });
+                return;
+            }
+
             if (
                 typeof window !== 'undefined' &&
                 !window.confirm(
-                    `Swap gearbox on ${selectedPart.machine.name} with ${spareGearboxId}?\nRemoved unit goes to REPAIR. Install runtime resets to 0.`
+                    `Swap gearbox on ${selectedPart.machine.name} with ${mountId}?\nRemoved unit goes to REPAIR. Install runtime resets to 0.`
                 )
             ) {
                 return;
             }
+
             setSaving(true);
             try {
                 await swapGearbox(
                     {
                         machineName: selectedPart.machine.name,
-                        newGearboxId: spareGearboxId,
+                        newGearboxId: mountId,
                         processCd,
                         lineCd: strandLineCd,
                         runtimeLimit: selectedPart.part.limitHours,
@@ -1298,7 +1333,7 @@ export default function PartsBoardPage() {
                 toast.current?.show({
                     severity: 'success',
                     summary: 'Gearbox swapped',
-                    detail: `${spareGearboxId} mounted · previous unit → REPAIR`,
+                    detail: `${mountId} mounted · previous unit → REPAIR`,
                     life: 4000
                 });
                 closeEdit();
