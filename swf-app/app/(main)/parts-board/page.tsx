@@ -61,6 +61,11 @@ import {
     type ComponentHistoryRow
 } from '@/lib/roller-monitoring/componentsClient';
 import { fetchCmMachines, insertCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
+import {
+    fetchGearboxAssets,
+    swapGearbox,
+    type GearboxAssetRow
+} from '@/lib/roller-monitoring/gearboxClient';
 import { applyComponentsToMachines, applyRollersToRegistryMachines, machinesFromRegistry } from '@/lib/roller-monitoring/mergeComponents';
 import {
     isBuncherBoard,
@@ -799,6 +804,10 @@ export default function PartsBoardPage() {
     );
     const [hiddenMachinesLoading, setHiddenMachinesLoading] = useState(false);
     const [hideMachineSaving, setHideMachineSaving] = useState(false);
+    const [gearboxSpares, setGearboxSpares] = useState<GearboxAssetRow[]>([]);
+    const [gearboxCurrent, setGearboxCurrent] = useState<GearboxAssetRow | null>(null);
+    const [spareGearboxId, setSpareGearboxId] = useState<string | null>(null);
+    const [gearboxPoolLoading, setGearboxPoolLoading] = useState(false);
     const machinesRef = useRef<MachineDashboard[]>([]);
     const syncEpochMsRef = useRef(Date.now());
     const processCdRef = useRef<ProcessCd>('STRANDING');
@@ -1169,6 +1178,9 @@ export default function PartsBoardPage() {
         setHistoryError(null);
         setRollerHistory([]);
         setRollerHistoryError(null);
+        setGearboxSpares([]);
+        setGearboxCurrent(null);
+        setSpareGearboxId(null);
     };
 
     const handleSaveLimit = async () => {
@@ -1240,6 +1252,61 @@ export default function PartsBoardPage() {
                 toast.current?.show({
                     severity: 'error',
                     summary: 'Replace failed',
+                    detail: e instanceof Error ? e.message : undefined,
+                    life: 5000
+                });
+            } finally {
+                setSaving(false);
+            }
+            return;
+        }
+
+        const isGearbox =
+            (selectedPart.kind === 'fixed' && selectedPart.partKey === 'gearbox') ||
+            selectedPart.part.partType?.toUpperCase() === 'GEARBOX';
+
+        if (isGearbox && processCd === 'STRANDING' && strandLineCd) {
+            if (!spareGearboxId) {
+                toast.current?.show({
+                    severity: 'warn',
+                    summary: 'Select a spare gearbox',
+                    life: 3000
+                });
+                return;
+            }
+            if (
+                typeof window !== 'undefined' &&
+                !window.confirm(
+                    `Swap gearbox on ${selectedPart.machine.name} with ${spareGearboxId}?\nRemoved unit goes to REPAIR. Install runtime resets to 0.`
+                )
+            ) {
+                return;
+            }
+            setSaving(true);
+            try {
+                await swapGearbox(
+                    {
+                        machineName: selectedPart.machine.name,
+                        newGearboxId: spareGearboxId,
+                        processCd,
+                        lineCd: strandLineCd,
+                        runtimeLimit: selectedPart.part.limitHours,
+                        removedStatus: 'REPAIR'
+                    },
+                    dbTarget
+                );
+                toast.current?.show({
+                    severity: 'success',
+                    summary: 'Gearbox swapped',
+                    detail: `${spareGearboxId} mounted · previous unit → REPAIR`,
+                    life: 4000
+                });
+                closeEdit();
+                await loadDashboard(true, dbTarget);
+            } catch (e) {
+                toast.current?.show({
+                    severity: 'error',
+                    summary: 'Gearbox swap failed',
                     detail: e instanceof Error ? e.message : undefined,
                     life: 5000
                 });
@@ -2004,6 +2071,23 @@ export default function PartsBoardPage() {
                             <dd>{selectedPart.part.displayName}</dd>
                             <dt>Part ID</dt>
                             <dd className="pb-fs-mono">{selectedPart.part.partId || '—'}</dd>
+                            {(selectedPart.kind === 'fixed' && selectedPart.partKey === 'gearbox') ||
+                            selectedPart.part.partType?.toUpperCase() === 'GEARBOX' ? (
+                                <>
+                                    <dt>Gearbox</dt>
+                                    <dd className="pb-fs-mono">
+                                        {gearboxPoolLoading
+                                            ? '…'
+                                            : gearboxCurrent?.gearboxId || selectedPart.part.partId || '—'}
+                                    </dd>
+                                    <dt>Lifetime runtime</dt>
+                                    <dd>
+                                        {gearboxCurrent
+                                            ? formatRuntimeHms(gearboxCurrent.lifetimeRuntimeSec / 3600)
+                                            : '—'}
+                                    </dd>
+                                </>
+                            ) : null}
                             <dt>Type</dt>
                             <dd>{formatPartTypeLabel(selectedPart.part)}</dd>
                             <dt>Seq</dt>
@@ -2051,6 +2135,36 @@ export default function PartsBoardPage() {
                             className="w-full mb-3"
                             disabled={!selectedPart.part.partId}
                         />
+                        {((selectedPart.kind === 'fixed' && selectedPart.partKey === 'gearbox') ||
+                            selectedPart.part.partType?.toUpperCase() === 'GEARBOX') &&
+                        processCd === 'STRANDING' ? (
+                            <div className="mb-3">
+                                <label className="block mb-2 text-sm font-medium">
+                                    Spare gearbox to mount
+                                </label>
+                                <Dropdown
+                                    value={spareGearboxId}
+                                    options={gearboxSpares.map((g) => ({
+                                        label: `${g.gearboxId} · life ${formatRuntimeHms(g.lifetimeRuntimeSec / 3600)}`,
+                                        value: g.gearboxId
+                                    }))}
+                                    onChange={(e) => setSpareGearboxId((e.value as string) ?? null)}
+                                    placeholder={
+                                        gearboxPoolLoading
+                                            ? 'Loading pool…'
+                                            : gearboxSpares.length
+                                              ? 'Select spare'
+                                              : 'No spare gearboxes'
+                                    }
+                                    className="w-full"
+                                    disabled={gearboxPoolLoading || gearboxSpares.length === 0}
+                                />
+                                <small className="text-color-secondary block mt-1">
+                                    Removed gearbox goes to REPAIR. Install runtime on this machine resets to 0;
+                                    asset lifetime is kept.
+                                </small>
+                            </div>
+                        ) : null}
                         <div className="pb-edit-actions mb-4">
                             <Button
                                 icon="pi pi-save"
@@ -2061,12 +2175,23 @@ export default function PartsBoardPage() {
                             />
                             <Button
                                 icon="pi pi-replay"
-                                label="Replace"
+                                label={
+                                    (selectedPart.kind === 'fixed' && selectedPart.partKey === 'gearbox') ||
+                                    selectedPart.part.partType?.toUpperCase() === 'GEARBOX'
+                                        ? 'Swap gearbox'
+                                        : 'Replace'
+                                }
                                 severity="danger"
                                 outlined
                                 loading={saving}
                                 onClick={handleReplace}
-                                disabled={!selectedPart.part.partId}
+                                disabled={
+                                    !selectedPart.part.partId ||
+                                    (((selectedPart.kind === 'fixed' && selectedPart.partKey === 'gearbox') ||
+                                        selectedPart.part.partType?.toUpperCase() === 'GEARBOX') &&
+                                        processCd === 'STRANDING' &&
+                                        !spareGearboxId)
+                                }
                             />
                         </div>
                         <div className="pb-comp-history">
