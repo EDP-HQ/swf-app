@@ -7,7 +7,7 @@ export type GearboxAssetRow = {
     gearboxNm: string;
     processCd: ProcessCd;
     lineCd: StrandLineCd | null;
-    status: 'SPARE' | 'IN_USE' | 'REPAIR' | string;
+    status: 'SPARE' | 'IN_USE' | 'REPAIR' | 'RETIRED' | string;
     currentMachineNm: string;
     currentPartId: string;
     lifetimeRuntimeSec: number;
@@ -112,7 +112,7 @@ export async function fetchGearboxAssets(
     processCd: ProcessCd,
     lineCd: StrandLineCd | null = null,
     target = getRollerDbTarget(),
-    options?: { status?: 'SPARE' | 'IN_USE' | 'REPAIR' }
+    options?: { status?: 'SPARE' | 'IN_USE' | 'REPAIR' | 'RETIRED' }
 ): Promise<GearboxAssetRow[]> {
     if (processCd === 'STRANDING' && !lineCd) {
         throw new Error('line_cd is required for STRANDING');
@@ -221,7 +221,7 @@ export async function swapGearbox(
 }
 
 export async function setGearboxStatus(
-    input: { gearboxId: string; status: 'SPARE' | 'REPAIR'; company?: string; factory?: string },
+    input: { gearboxId: string; status: 'SPARE' | 'REPAIR' | 'RETIRED'; company?: string; factory?: string },
     target = getRollerDbTarget()
 ): Promise<void> {
     await postGearbox(
@@ -230,6 +230,35 @@ export async function setGearboxStatus(
             params: {
                 GearboxId: input.gearboxId,
                 Status: input.status,
+                Company: input.company ?? 'KSB',
+                Factory: input.factory ?? 'F002'
+            }
+        },
+        target
+    );
+}
+
+export async function insertGearbox(
+    input: {
+        gearboxId: string;
+        gearboxNm?: string;
+        processCd?: ProcessCd;
+        lineCd?: StrandLineCd | null;
+        status?: 'SPARE' | 'REPAIR';
+        company?: string;
+        factory?: string;
+    },
+    target = getRollerDbTarget()
+): Promise<void> {
+    await postGearbox(
+        '/insert',
+        {
+            params: {
+                GearboxId: input.gearboxId.trim().toUpperCase(),
+                GearboxNm: input.gearboxNm?.trim() || null,
+                ProcessCd: input.processCd ?? 'STRANDING',
+                LineCd: input.lineCd ?? 'BUNCHER',
+                Status: input.status ?? 'SPARE',
                 Company: input.company ?? 'KSB',
                 Factory: input.factory ?? 'F002'
             }

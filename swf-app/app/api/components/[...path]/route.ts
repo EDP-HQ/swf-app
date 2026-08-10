@@ -11,7 +11,8 @@ const ALLOWED_POST = new Set([
     'machines/visible',
     'gearbox/swap',
     'gearbox/status',
-    'gearbox/update'
+    'gearbox/update',
+    'gearbox/insert'
 ]);
 
 function resolveComponentsPath(segments: string[] | undefined): { swfPath: string; error?: string } {

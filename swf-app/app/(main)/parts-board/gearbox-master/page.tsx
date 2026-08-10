@@ -14,6 +14,7 @@ import {
     fetchGearboxAssets,
     fetchGearboxHistory,
     gearboxLabel,
+    insertGearbox,
     setGearboxStatus,
     updateGearboxName,
     type GearboxAssetRow,
@@ -22,11 +23,21 @@ import {
 import { getRollerDbTarget, type RollerDbTarget } from '@/lib/roller-monitoring/rollerMonitoringDbTarget';
 import './gearbox-master.css';
 
-function statusSeverity(status: string): 'success' | 'warning' | 'danger' | 'info' {
+function statusSeverity(status: string): 'success' | 'warning' | 'danger' | 'info' | 'secondary' {
     if (status === 'IN_USE') return 'success';
     if (status === 'SPARE') return 'info';
     if (status === 'REPAIR') return 'warning';
+    if (status === 'RETIRED') return 'secondary';
     return 'danger';
+}
+
+function suggestNextGearboxId(rows: GearboxAssetRow[]): string {
+    let max = 0;
+    for (const r of rows) {
+        const m = /^GB(\d+)$/i.exec(r.gearboxId);
+        if (m) max = Math.max(max, Number(m[1]));
+    }
+    return `GB${String(max + 1).padStart(2, '0')}`;
 }
 
 /** Buncher stranding gearbox pool only */
@@ -46,6 +57,9 @@ export default function GearboxMasterPage() {
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyRows, setHistoryRows] = useState<GearboxHistoryRow[]>([]);
     const [historyFor, setHistoryFor] = useState<GearboxAssetRow | null>(null);
+    const [addOpen, setAddOpen] = useState(false);
+    const [addId, setAddId] = useState('');
+    const [addName, setAddName] = useState('');
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -66,11 +80,12 @@ export default function GearboxMasterPage() {
     }, [load]);
 
     const counts = useMemo(() => {
-        const c = { IN_USE: 0, SPARE: 0, REPAIR: 0 };
+        const c = { IN_USE: 0, SPARE: 0, REPAIR: 0, RETIRED: 0 };
         for (const r of rows) {
             if (r.status === 'IN_USE') c.IN_USE += 1;
             else if (r.status === 'SPARE') c.SPARE += 1;
             else if (r.status === 'REPAIR') c.REPAIR += 1;
+            else if (r.status === 'RETIRED') c.RETIRED += 1;
         }
         return c;
     }, [rows]);
@@ -78,6 +93,13 @@ export default function GearboxMasterPage() {
     const openEdit = (row: GearboxAssetRow) => {
         setEditRow(row);
         setEditName(row.gearboxNm || row.gearboxId);
+    };
+
+    const openAdd = () => {
+        const next = suggestNextGearboxId(rows);
+        setAddId(next);
+        setAddName(`Gearbox ${next.replace(/^GB/i, '')}`);
+        setAddOpen(true);
     };
 
     const saveName = async () => {
@@ -103,7 +125,51 @@ export default function GearboxMasterPage() {
         }
     };
 
-    const markStatus = async (row: GearboxAssetRow, status: 'SPARE' | 'REPAIR') => {
+    const saveAdd = async () => {
+        const id = addId.trim().toUpperCase();
+        if (!id) return;
+        if (!/^[A-Z0-9_-]{2,20}$/.test(id)) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Invalid ID',
+                detail: 'Use 2–20 letters, numbers, _ or -.',
+                life: 4000
+            });
+            return;
+        }
+        setSaving(true);
+        try {
+            await insertGearbox(
+                {
+                    gearboxId: id,
+                    gearboxNm: addName.trim() || id,
+                    processCd: POOL_PROCESS,
+                    lineCd: POOL_LINE,
+                    status: 'SPARE'
+                },
+                dbTarget
+            );
+            toast.current?.show({
+                severity: 'success',
+                summary: 'Gearbox added',
+                detail: `${id} → SPARE`,
+                life: 3000
+            });
+            setAddOpen(false);
+            await load();
+        } catch (e) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Add failed',
+                detail: e instanceof Error ? e.message : undefined,
+                life: 5000
+            });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const markStatus = async (row: GearboxAssetRow, status: 'SPARE' | 'REPAIR' | 'RETIRED') => {
         if (row.status === 'IN_USE') {
             toast.current?.show({
                 severity: 'warn',
@@ -111,6 +177,13 @@ export default function GearboxMasterPage() {
                 detail: 'Swap it off the Buncher board first, then change status here.',
                 life: 4500
             });
+            return;
+        }
+        if (
+            status === 'RETIRED' &&
+            typeof window !== 'undefined' &&
+            !window.confirm(`Retire ${row.gearboxId}? It will no longer be available as a spare.`)
+        ) {
             return;
         }
         setSaving(true);
@@ -164,10 +237,17 @@ export default function GearboxMasterPage() {
                     </p>
                     <h1 className="gb-master__title">Gearbox master</h1>
                     <p className="gb-master__sub">
-                        Buncher pool only — names, spare/repair status, lifetime hours, and mount history.
+                        Buncher pool only — add units, rename, spare/repair/retire, lifetime, and mount history.
                     </p>
                 </div>
                 <div className="gb-master__actions">
+                    <Button
+                        icon="pi pi-plus"
+                        label="Add gearbox"
+                        outlined
+                        onClick={openAdd}
+                        disabled={loading}
+                    />
                     <Button icon="pi pi-refresh" rounded outlined loading={loading} onClick={() => void load()} />
                 </div>
             </header>
@@ -181,6 +261,9 @@ export default function GearboxMasterPage() {
                 </span>
                 <span>
                     Repair <strong>{counts.REPAIR}</strong>
+                </span>
+                <span>
+                    Retired <strong>{counts.RETIRED}</strong>
                 </span>
             </div>
 
@@ -208,7 +291,10 @@ export default function GearboxMasterPage() {
                         </thead>
                         <tbody>
                             {rows.map((row) => (
-                                <tr key={row.gearboxId}>
+                                <tr
+                                    key={row.gearboxId}
+                                    className={row.status === 'RETIRED' ? 'gb-master__row--retired' : undefined}
+                                >
                                     <td className="gb-mono">{row.gearboxId}</td>
                                     <td>
                                         <button
@@ -270,6 +356,30 @@ export default function GearboxMasterPage() {
                                                 onClick={() => void markStatus(row, 'REPAIR')}
                                             />
                                         ) : null}
+                                        {row.status === 'RETIRED' ? (
+                                            <Button
+                                                icon="pi pi-replay"
+                                                rounded
+                                                text
+                                                size="small"
+                                                severity="success"
+                                                tooltip="Restore as spare"
+                                                loading={saving}
+                                                onClick={() => void markStatus(row, 'SPARE')}
+                                            />
+                                        ) : null}
+                                        {row.status === 'SPARE' || row.status === 'REPAIR' ? (
+                                            <Button
+                                                icon="pi pi-ban"
+                                                rounded
+                                                text
+                                                size="small"
+                                                severity="danger"
+                                                tooltip="Retire"
+                                                loading={saving}
+                                                onClick={() => void markStatus(row, 'RETIRED')}
+                                            />
+                                        ) : null}
                                     </td>
                                 </tr>
                             ))}
@@ -277,6 +387,44 @@ export default function GearboxMasterPage() {
                     </table>
                 </div>
             )}
+
+            <Dialog
+                header="Add gearbox"
+                visible={addOpen}
+                style={{ width: 'min(92vw, 24rem)' }}
+                onHide={() => setAddOpen(false)}
+                dismissableMask
+            >
+                <label className="block mb-2 text-sm font-medium">ID</label>
+                <InputText
+                    value={addId}
+                    onChange={(e) => setAddId(e.target.value.toUpperCase())}
+                    className="w-full mb-3 gb-mono"
+                    maxLength={20}
+                    placeholder="e.g. GB11"
+                />
+                <label className="block mb-2 text-sm font-medium">Display name</label>
+                <InputText
+                    value={addName}
+                    onChange={(e) => setAddName(e.target.value)}
+                    className="w-full mb-3"
+                    maxLength={100}
+                    placeholder="e.g. Gearbox 11"
+                />
+                <small className="text-color-secondary block mb-3">
+                    New unit is added as SPARE in the Buncher pool.
+                </small>
+                <div className="flex justify-content-end gap-2">
+                    <Button label="Cancel" text onClick={() => setAddOpen(false)} disabled={saving} />
+                    <Button
+                        label="Add"
+                        icon="pi pi-plus"
+                        loading={saving}
+                        disabled={!addId.trim()}
+                        onClick={() => void saveAdd()}
+                    />
+                </div>
+            </Dialog>
 
             <Dialog
                 header={editRow ? `Rename ${editRow.gearboxId}` : 'Rename'}
