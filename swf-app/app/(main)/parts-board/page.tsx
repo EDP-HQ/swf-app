@@ -821,6 +821,7 @@ export default function PartsBoardPage() {
     const [gearboxCurrent, setGearboxCurrent] = useState<GearboxAssetRow | null>(null);
     const [spareGearboxId, setSpareGearboxId] = useState<string | null>(null);
     const [gearboxPoolLoading, setGearboxPoolLoading] = useState(false);
+    const [attentionExpanded, setAttentionExpanded] = useState(false);
     const machinesRef = useRef<MachineDashboard[]>([]);
     const syncEpochMsRef = useRef(Date.now());
     const processCdRef = useRef<ProcessCd>('STRANDING');
@@ -1992,37 +1993,81 @@ export default function PartsBoardPage() {
             </header>
 
             <div className="pb-process-tabs">
-                <TabView
-                    activeIndex={processTabIndex}
-                    onTabChange={(e) => {
-                        const next = PROCESS_OPTIONS[e.index]?.code;
-                        if (!next || next === processCd) return;
-                        loadGenRef.current += 1;
-                        processCdRef.current = next;
-                        setProcessCd(next);
-                    }}
-                >
-                    {PROCESS_OPTIONS.map((p) => (
-                        <TabPanel key={p.code} header={p.label} />
-                    ))}
-                </TabView>
-                {processCd === 'STRANDING' ? (
+                <div className="pb-process-tabs__left">
                     <TabView
-                        className="pb-process-tabs__line"
-                        activeIndex={strandLineTabIndex}
+                        activeIndex={processTabIndex}
                         onTabChange={(e) => {
-                            const next = STRAND_LINE_OPTIONS[e.index]?.code;
-                            if (!next || next === strandLineCd) return;
+                            const next = PROCESS_OPTIONS[e.index]?.code;
+                            if (!next || next === processCd) return;
                             loadGenRef.current += 1;
-                            strandLineCdRef.current = next;
-                            setStrandLineCd(next);
+                            processCdRef.current = next;
+                            setProcessCd(next);
+                            setAttentionExpanded(false);
                         }}
                     >
-                        {STRAND_LINE_OPTIONS.map((p) => (
+                        {PROCESS_OPTIONS.map((p) => (
                             <TabPanel key={p.code} header={p.label} />
                         ))}
                     </TabView>
-                ) : null}
+                    {processCd === 'STRANDING' ? (
+                        <TabView
+                            className="pb-process-tabs__line"
+                            activeIndex={strandLineTabIndex}
+                            onTabChange={(e) => {
+                                const next = STRAND_LINE_OPTIONS[e.index]?.code;
+                                if (!next || next === strandLineCd) return;
+                                loadGenRef.current += 1;
+                                strandLineCdRef.current = next;
+                                setStrandLineCd(next);
+                                setAttentionExpanded(false);
+                            }}
+                        >
+                            {STRAND_LINE_OPTIONS.map((p) => (
+                                <TabPanel key={p.code} header={p.label} />
+                            ))}
+                        </TabView>
+                    ) : null}
+                </div>
+                <aside className="pb-attention" aria-label="Need attention">
+                    <span className="pb-attention__title">Need attention</span>
+                    {attentionItems.length === 0 ? (
+                        <span className="pb-attention__empty">None</span>
+                    ) : (
+                        <>
+                            <ul className="pb-attention__list">
+                                {(attentionExpanded ? attentionItems : attentionItems.slice(0, 5)).map((item) => (
+                                    <li key={item.key}>
+                                        <button
+                                            type="button"
+                                            className="pb-attention__item"
+                                            onClick={item.open}
+                                            title={`${item.machineName} · ${item.label} · ${item.pct}% · ${formatRuntimeHms(item.runtimeHours)} / ${formatRuntimeHms(item.limitHours)}`}
+                                        >
+                                            <span className="pb-attention__machine">{item.machineName}</span>
+                                            <span className="pb-attention__part">{item.label}</span>
+                                            <span className="pb-attention__pct">{item.pct}%</span>
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                            {attentionItems.length > 5 ? (
+                                <button
+                                    type="button"
+                                    className="pb-attention__more"
+                                    onClick={() => setAttentionExpanded((v) => !v)}
+                                    aria-expanded={attentionExpanded}
+                                    title={
+                                        attentionExpanded
+                                            ? 'Show less'
+                                            : `Show ${attentionItems.length - 5} more`
+                                    }
+                                >
+                                    {attentionExpanded ? '−' : `++${attentionItems.length - 5}`}
+                                </button>
+                            ) : null}
+                        </>
+                    )}
+                </aside>
             </div>
 
             {error && !loading && <Message severity="error" text={error} className="pb-error" />}
@@ -2036,70 +2081,30 @@ export default function PartsBoardPage() {
                     No machines registered for this process yet. Click Add machine to key one in.
                 </div>
             ) : (
-                <div className="pb-main">
-                    <div className="pb-machine-grid">
-                        {visibleMachines.map((machine) => (
-                            <MachineCard
-                                key={machine.name}
-                                machine={machine}
-                                syncEpochMs={syncEpochMs}
-                                nowMs={nowMs}
-                                search={searchLower}
-                                componentsOnly={!buncherBoard}
-                                onOpenFullscreen={() => openMachine(machine.name)}
-                                onOpenRoller={(lr) => openRollerEdit(machine, lr.roller)}
-                                onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
-                                onOpenCustom={(part) => openCustomEdit(machine, part)}
-                                onHideMachine={() => {
-                                    if (
-                                        typeof window !== 'undefined' &&
-                                        !window.confirm(`Hide ${machine.name} from this process?`)
-                                    ) {
-                                        return;
-                                    }
-                                    void handleHideMachine(machine.name);
-                                }}
-                            />
-                        ))}
-                    </div>
-                    <aside className="pb-attention" aria-label="Need attention">
-                        <div className="pb-attention__head">
-                            <span className="pb-attention__title">Need attention</span>
-                            <Tag
-                                value={String(attentionItems.length)}
-                                severity={attentionItems.length ? 'danger' : 'success'}
-                                rounded
-                            />
-                        </div>
-                        {attentionItems.length === 0 ? (
-                            <p className="pb-attention__empty">No items over limit</p>
-                        ) : (
-                            <ul className="pb-attention__list">
-                                {attentionItems.map((item) => (
-                                    <li key={item.key}>
-                                        <button
-                                            type="button"
-                                            className="pb-attention__item"
-                                            onClick={item.open}
-                                            title={`${item.machineName} · ${item.label}`}
-                                        >
-                                            <span className="pb-attention__item-main">
-                                                <span className="pb-attention__machine">{item.machineName}</span>
-                                                <span className="pb-attention__part">{item.label}</span>
-                                            </span>
-                                            <span className="pb-attention__item-meta">
-                                                <span className="pb-attention__pct">{item.pct}%</span>
-                                                <span className="pb-attention__time">
-                                                    {formatRuntimeHms(item.runtimeHours)} /{' '}
-                                                    {formatRuntimeHms(item.limitHours)}
-                                                </span>
-                                            </span>
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </aside>
+                <div className="pb-machine-grid">
+                    {visibleMachines.map((machine) => (
+                        <MachineCard
+                            key={machine.name}
+                            machine={machine}
+                            syncEpochMs={syncEpochMs}
+                            nowMs={nowMs}
+                            search={searchLower}
+                            componentsOnly={!buncherBoard}
+                            onOpenFullscreen={() => openMachine(machine.name)}
+                            onOpenRoller={(lr) => openRollerEdit(machine, lr.roller)}
+                            onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
+                            onOpenCustom={(part) => openCustomEdit(machine, part)}
+                            onHideMachine={() => {
+                                if (
+                                    typeof window !== 'undefined' &&
+                                    !window.confirm(`Hide ${machine.name} from this process?`)
+                                ) {
+                                    return;
+                                }
+                                void handleHideMachine(machine.name);
+                            }}
+                        />
+                    ))}
                 </div>
             )}
 

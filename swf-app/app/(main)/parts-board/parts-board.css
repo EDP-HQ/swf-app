@@ -73,19 +73,9 @@
     min-height: 12rem;
 }
 
-.pb-main {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: row;
-    align-items: stretch;
-    gap: 0.65rem;
-}
-
 .pb-machine-grid {
     flex: 1;
     min-height: 0;
-    min-width: 0;
     display: flex;
     flex-direction: row;
     align-items: stretch;
@@ -94,131 +84,6 @@
     overflow-y: hidden;
     padding-bottom: 0.35rem;
     scroll-snap-type: x proximity;
-}
-
-.pb-attention {
-    flex: 0 0 15.5rem;
-    width: 15.5rem;
-    align-self: flex-start;
-    max-height: calc(100dvh - 10rem);
-    display: flex;
-    flex-direction: column;
-    border: 1px solid color-mix(in srgb, var(--pb-over) 35%, var(--surface-border));
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--pb-over-bg) 55%, var(--surface-0));
-    overflow: hidden;
-}
-
-.pb-attention__head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.55rem 0.7rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--pb-over) 25%, var(--surface-border));
-    background: color-mix(in srgb, var(--pb-over-bg) 80%, var(--surface-0));
-}
-
-.pb-attention__title {
-    font-size: 0.78rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    color: #991b1b;
-}
-
-.pb-attention__empty {
-    margin: 0;
-    padding: 0.85rem 0.7rem;
-    font-size: 0.8rem;
-    color: var(--text-color-secondary);
-}
-
-.pb-attention__list {
-    list-style: none;
-    margin: 0;
-    padding: 0.35rem;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-}
-
-.pb-attention__item {
-    appearance: none;
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    text-align: left;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    padding: 0.45rem 0.5rem;
-    background: var(--surface-0);
-    cursor: pointer;
-    transition: border-color 0.12s ease, background 0.12s ease;
-}
-
-.pb-attention__item:hover {
-    border-color: color-mix(in srgb, var(--pb-over) 45%, transparent);
-    background: #fff;
-}
-
-.pb-attention__item-main {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-    min-width: 0;
-}
-
-.pb-attention__machine {
-    font-size: 0.68rem;
-    font-weight: 600;
-    color: var(--text-color-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.pb-attention__part {
-    font-size: 0.82rem;
-    font-weight: 700;
-    color: var(--text-color);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.pb-attention__item-meta {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.35rem;
-}
-
-.pb-attention__pct {
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: var(--pb-over);
-}
-
-.pb-attention__time {
-    font-size: 0.68rem;
-    color: var(--text-color-secondary);
-    font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 900px) {
-    .pb-main {
-        flex-direction: column;
-    }
-
-    .pb-attention {
-        flex: 0 0 auto;
-        width: 100%;
-        max-height: 12rem;
-        order: -1;
-    }
 }
 
 .pb-machine {
@@ -628,6 +493,16 @@
 
 .pb-process-tabs {
     flex-shrink: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+}
+
+.pb-process-tabs__left {
+    min-width: 0;
+    flex: 1 1 auto;
 }
 
 .pb-process-tabs .p-tabview-nav {
@@ -646,6 +521,112 @@
 .pb-process-tabs__line .p-tabview-nav-link {
     font-size: 0.85rem;
     padding: 0.55rem 0.9rem;
+}
+
+.pb-attention {
+    flex: 0 1 auto;
+    max-width: min(42rem, 100%);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.4rem;
+    padding: 0.35rem 0.55rem;
+    border: 1px solid color-mix(in srgb, var(--pb-over) 30%, var(--surface-border));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--pb-over-bg) 70%, var(--surface-0));
+    margin-left: auto;
+}
+
+.pb-attention__title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #991b1b;
+    white-space: nowrap;
+    margin-right: 0.15rem;
+}
+
+.pb-attention__empty {
+    font-size: 0.75rem;
+    color: var(--text-color-secondary);
+}
+
+.pb-attention__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    max-height: none;
+}
+
+.pb-attention__item {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    max-width: 11.5rem;
+    border: 1px solid color-mix(in srgb, var(--pb-over) 35%, var(--surface-border));
+    border-radius: 999px;
+    padding: 0.2rem 0.45rem 0.2rem 0.4rem;
+    background: var(--surface-0);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.pb-attention__item:hover {
+    border-color: var(--pb-over);
+    background: #fff;
+}
+
+.pb-attention__machine {
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: var(--text-color-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 3.8rem;
+}
+
+.pb-attention__part {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 4.5rem;
+}
+
+.pb-attention__pct {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--pb-over);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+}
+
+.pb-attention__more {
+    appearance: none;
+    border: 1px dashed color-mix(in srgb, var(--pb-over) 50%, var(--surface-border));
+    border-radius: 999px;
+    padding: 0.2rem 0.55rem;
+    background: transparent;
+    color: #991b1b;
+    font-size: 0.75rem;
+    font-weight: 800;
+    cursor: pointer;
+    line-height: 1.2;
+}
+
+.pb-attention__more:hover {
+    background: var(--surface-0);
+    border-style: solid;
 }
 
 .pb-machine__empty-parts {
