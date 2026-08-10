@@ -482,9 +482,9 @@ export default function GearboxMasterPage() {
                                 <tr key={h.histId}>
                                     <td>{h.machineNm}</td>
                                     <td>{formatReplaceDt(h.mountDt)}</td>
-                                    <td>{h.dismountDt ? formatReplaceDt(h.dismountDt) : 'Current'}</td>
+                                    <td>{h.dismountDt ? formatReplaceDt(h.dismountDt) : '-'}</td>
                                     <td>{formatRuntimeHms(h.runtimeSec / 3600)}</td>
-                                    <td>{h.reason || '—'}</td>
+                                    <td>{h.dismountDt ? h.reason || '-' : '-'}</td>
                                 </tr>
                             ))}
                         </tbody>
