@@ -69,6 +69,12 @@ export const APP_NAV_SECTIONS: AppNavSection[] = [
                 to: '/parts-board',
                 icon: 'pi pi-fw pi-th-large',
                 description: 'Machines, rollers, components — dashboard with alerts and edit.'
+            },
+            {
+                label: 'Gearbox master',
+                to: '/parts-board/gearbox-master',
+                icon: 'pi pi-fw pi-cog',
+                description: 'Gearbox pool names, spare/repair status, and mount history.'
             }
         ]
     }

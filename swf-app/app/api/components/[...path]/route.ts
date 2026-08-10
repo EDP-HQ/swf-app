@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { proxyErrorPayload, proxySwfApi } from '@/lib/api/swfApiProxy';
 
-const ALLOWED_GET = new Set(['select', 'history', 'machines', 'gearbox']);
+const ALLOWED_GET = new Set(['select', 'history', 'machines', 'gearbox', 'gearbox/history']);
 const ALLOWED_POST = new Set([
     'replace',
     'updateruntime',
@@ -10,7 +10,8 @@ const ALLOWED_POST = new Set([
     'machines',
     'machines/visible',
     'gearbox/swap',
-    'gearbox/status'
+    'gearbox/status',
+    'gearbox/update'
 ]);
 
 function resolveComponentsPath(segments: string[] | undefined): { swfPath: string; error?: string } {

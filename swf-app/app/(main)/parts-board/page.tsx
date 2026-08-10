@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Button } from 'primereact/button';
 import { Checkbox } from 'primereact/checkbox';
 import { Dialog } from 'primereact/dialog';
@@ -63,6 +64,7 @@ import {
 import { fetchCmMachines, insertCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
 import {
     fetchGearboxAssets,
+    gearboxLabel,
     swapGearbox,
     type GearboxAssetRow
 } from '@/lib/roller-monitoring/gearboxClient';
@@ -1820,6 +1822,9 @@ export default function PartsBoardPage() {
                         onClick={() => void openHiddenMachines()}
                         tooltip="Hidden machines"
                     />
+                    <Link href="/parts-board/gearbox-master" className="p-button p-button-rounded p-button-outlined p-button-icon-only" title="Gearbox master">
+                        <span className="p-button-icon pi pi-cog" />
+                    </Link>
                     <Button
                         icon="pi pi-plus"
                         rounded
@@ -2110,10 +2115,12 @@ export default function PartsBoardPage() {
                             selectedPart.part.partType?.toUpperCase() === 'GEARBOX' ? (
                                 <>
                                     <dt>Gearbox</dt>
-                                    <dd className="pb-fs-mono">
+                                    <dd>
                                         {gearboxPoolLoading
                                             ? '…'
-                                            : gearboxCurrent?.gearboxId || selectedPart.part.partId || '—'}
+                                            : gearboxCurrent
+                                              ? gearboxLabel(gearboxCurrent)
+                                              : selectedPart.part.partId || '—'}
                                     </dd>
                                     <dt>Lifetime runtime</dt>
                                     <dd>
@@ -2180,7 +2187,7 @@ export default function PartsBoardPage() {
                                 <Dropdown
                                     value={spareGearboxId}
                                     options={gearboxSpares.map((g) => ({
-                                        label: `${g.gearboxId} · life ${formatRuntimeHms(g.lifetimeRuntimeSec / 3600)}`,
+                                        label: `${gearboxLabel(g)} · life ${formatRuntimeHms(g.lifetimeRuntimeSec / 3600)}`,
                                         value: g.gearboxId
                                     }))}
                                     onChange={(e) => setSpareGearboxId((e.value as string) ?? null)}
