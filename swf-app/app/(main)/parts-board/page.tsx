@@ -23,7 +23,8 @@ import {
     allComponentLiveSnapshots,
     applySavedAllComponentRuntime,
     liveFixedPartRuntimeHours,
-    liveFixedPartStatus
+    liveFixedPartStatus,
+    MACHINE_FIXED_PART_KEYS
 } from '@/lib/roller-monitoring/machineParts';
 import {
     applySavedRollerRuntime,
@@ -105,6 +106,16 @@ type LiveRoller = {
     runtimeHours: number;
     pct: number;
     status: PartHealthStatus;
+};
+
+type AttentionItem = {
+    key: string;
+    machineName: string;
+    label: string;
+    runtimeHours: number;
+    limitHours: number;
+    pct: number;
+    open: () => void;
 };
 
 type SelectedPart =
@@ -1447,6 +1458,61 @@ export default function PartsBoardPage() {
         });
     }, [sortedMachines, searchLower]);
 
+    const attentionItems = useMemo(() => {
+        const items: AttentionItem[] = [];
+        for (const machine of sortedMachines) {
+            for (const partKey of MACHINE_FIXED_PART_KEYS) {
+                const part = machine[partKey];
+                if (!part.partId) continue;
+                const runtimeHours = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
+                const status = computeRollerStatus(runtimeHours, part.limitHours);
+                if (status !== 'Overdue') continue;
+                items.push({
+                    key: `${machine.name}:fixed:${partKey}:${part.partId}`,
+                    machineName: machine.name,
+                    label: part.displayName,
+                    runtimeHours,
+                    limitHours: part.limitHours,
+                    pct: usagePct(runtimeHours, part.limitHours),
+                    open: () => openFixedEdit(machine, partKey, part)
+                });
+            }
+            for (const part of machine.extraParts ?? []) {
+                if (!part.partId) continue;
+                const runtimeHours = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
+                const status = computeRollerStatus(runtimeHours, part.limitHours);
+                if (status !== 'Overdue') continue;
+                items.push({
+                    key: `${machine.name}:custom:${part.partId}`,
+                    machineName: machine.name,
+                    label: part.displayName,
+                    runtimeHours,
+                    limitHours: part.limitHours,
+                    pct: usagePct(runtimeHours, part.limitHours),
+                    open: () => openCustomEdit(machine, part)
+                });
+            }
+            if (buncherBoard) {
+                for (const roller of machine.rollers) {
+                    const live = buildLiveRoller(roller, machine, syncEpochMs, nowMs);
+                    if (live.status !== 'Overdue') continue;
+                    items.push({
+                        key: `${machine.name}:roller:${roller.binLocation || roller.rollerId || roller.displayName}`,
+                        machineName: machine.name,
+                        label: roller.displayName,
+                        runtimeHours: live.runtimeHours,
+                        limitHours: roller.limitHours,
+                        pct: live.pct,
+                        open: () => openRollerEdit(machine, roller)
+                    });
+                }
+            }
+        }
+        return items.sort(
+            (a, b) => b.runtimeHours / Math.max(b.limitHours, 0.001) - a.runtimeHours / Math.max(a.limitHours, 0.001)
+        );
+    }, [sortedMachines, syncEpochMs, nowMs, buncherBoard]);
+
     const machineOptions = useMemo(
         () => sortedMachines.map((m) => ({ label: m.name, value: m.name })),
         [sortedMachines]
@@ -1970,30 +2036,70 @@ export default function PartsBoardPage() {
                     No machines registered for this process yet. Click Add machine to key one in.
                 </div>
             ) : (
-                <div className="pb-machine-grid">
-                    {visibleMachines.map((machine) => (
-                        <MachineCard
-                            key={machine.name}
-                            machine={machine}
-                            syncEpochMs={syncEpochMs}
-                            nowMs={nowMs}
-                            search={searchLower}
-                            componentsOnly={!buncherBoard}
-                            onOpenFullscreen={() => openMachine(machine.name)}
-                            onOpenRoller={(lr) => openRollerEdit(machine, lr.roller)}
-                            onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
-                            onOpenCustom={(part) => openCustomEdit(machine, part)}
-                            onHideMachine={() => {
-                                if (
-                                    typeof window !== 'undefined' &&
-                                    !window.confirm(`Hide ${machine.name} from this process?`)
-                                ) {
-                                    return;
-                                }
-                                void handleHideMachine(machine.name);
-                            }}
-                        />
-                    ))}
+                <div className="pb-main">
+                    <div className="pb-machine-grid">
+                        {visibleMachines.map((machine) => (
+                            <MachineCard
+                                key={machine.name}
+                                machine={machine}
+                                syncEpochMs={syncEpochMs}
+                                nowMs={nowMs}
+                                search={searchLower}
+                                componentsOnly={!buncherBoard}
+                                onOpenFullscreen={() => openMachine(machine.name)}
+                                onOpenRoller={(lr) => openRollerEdit(machine, lr.roller)}
+                                onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
+                                onOpenCustom={(part) => openCustomEdit(machine, part)}
+                                onHideMachine={() => {
+                                    if (
+                                        typeof window !== 'undefined' &&
+                                        !window.confirm(`Hide ${machine.name} from this process?`)
+                                    ) {
+                                        return;
+                                    }
+                                    void handleHideMachine(machine.name);
+                                }}
+                            />
+                        ))}
+                    </div>
+                    <aside className="pb-attention" aria-label="Need attention">
+                        <div className="pb-attention__head">
+                            <span className="pb-attention__title">Need attention</span>
+                            <Tag
+                                value={String(attentionItems.length)}
+                                severity={attentionItems.length ? 'danger' : 'success'}
+                                rounded
+                            />
+                        </div>
+                        {attentionItems.length === 0 ? (
+                            <p className="pb-attention__empty">No items over limit</p>
+                        ) : (
+                            <ul className="pb-attention__list">
+                                {attentionItems.map((item) => (
+                                    <li key={item.key}>
+                                        <button
+                                            type="button"
+                                            className="pb-attention__item"
+                                            onClick={item.open}
+                                            title={`${item.machineName} · ${item.label}`}
+                                        >
+                                            <span className="pb-attention__item-main">
+                                                <span className="pb-attention__machine">{item.machineName}</span>
+                                                <span className="pb-attention__part">{item.label}</span>
+                                            </span>
+                                            <span className="pb-attention__item-meta">
+                                                <span className="pb-attention__pct">{item.pct}%</span>
+                                                <span className="pb-attention__time">
+                                                    {formatRuntimeHms(item.runtimeHours)} /{' '}
+                                                    {formatRuntimeHms(item.limitHours)}
+                                                </span>
+                                            </span>
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </aside>
                 </div>
             )}
 
