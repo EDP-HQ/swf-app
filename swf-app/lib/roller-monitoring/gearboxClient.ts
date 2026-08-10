@@ -94,7 +94,7 @@ function mapAsset(row: Record<string, unknown>): GearboxAssetRow {
         gearboxNm: nm || id,
         processCd: rowStr(row, 'PROCESS_CD').toUpperCase() as ProcessCd,
         lineCd: line ? (line.toUpperCase() as StrandLineCd) : null,
-        status: rowStr(row, 'STATUS').toUpperCase(),
+        status: rowStr(row, 'STATUS', 'Status').toUpperCase(),
         currentMachineNm: rowStr(row, 'CURRENT_MACHINE_NM'),
         currentPartId: rowStr(row, 'CURRENT_PART_ID'),
         lifetimeRuntimeSec: rowNum(row, 'LIFETIME_RUNTIME_SEC'),

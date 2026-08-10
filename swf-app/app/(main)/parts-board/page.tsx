@@ -1123,14 +1123,70 @@ export default function PartsBoardPage() {
         setLimitInput(roller.limitHours);
     };
 
+    const loadGearboxPoolForEdit = useCallback(
+        async (machineName: string, partId: string | undefined, target = getRollerDbTarget()) => {
+            // Gearbox pool is Stranding / Buncher only
+            if (!isBuncherBoard(processCd, strandLineCd)) {
+                setGearboxSpares([]);
+                setGearboxCurrent(null);
+                setSpareGearboxId(null);
+                return;
+            }
+            setGearboxPoolLoading(true);
+            try {
+                const assets = await fetchGearboxAssets('STRANDING', 'BUNCHER', target);
+                const current =
+                    assets.find(
+                        (a) =>
+                            a.status === 'IN_USE' &&
+                            (a.currentMachineNm === machineName ||
+                                (partId != null &&
+                                    partId !== '' &&
+                                    (a.currentPartId === partId || a.gearboxId === partId)))
+                    ) ?? null;
+                const spares = assets.filter((a) => a.status === 'SPARE');
+                setGearboxCurrent(current);
+                setGearboxSpares(spares);
+                setSpareGearboxId(spares[0]?.gearboxId ?? null);
+            } catch (e) {
+                setGearboxSpares([]);
+                setGearboxCurrent(null);
+                setSpareGearboxId(null);
+                toast.current?.show({
+                    severity: 'error',
+                    summary: 'Cannot load gearbox pool',
+                    detail: e instanceof Error ? e.message : undefined,
+                    life: 5000
+                });
+            } finally {
+                setGearboxPoolLoading(false);
+            }
+        },
+        [processCd, strandLineCd]
+    );
+
     const openFixedEdit = (machine: MachineDashboard, partKey: MachineFixedPartKey, part: FixedPartRow) => {
         setSelectedPart({ kind: 'fixed', machine, partKey, part });
         setLimitInput(part.limitHours);
+        if (partKey === 'gearbox' || part.partType?.toUpperCase() === 'GEARBOX') {
+            void loadGearboxPoolForEdit(machine.name, part.partId);
+        } else {
+            setGearboxSpares([]);
+            setGearboxCurrent(null);
+            setSpareGearboxId(null);
+        }
     };
 
     const openCustomEdit = (machine: MachineDashboard, part: FixedPartRow) => {
         setSelectedPart({ kind: 'custom', machine, part });
         setLimitInput(part.limitHours);
+        if (part.partType?.toUpperCase() === 'GEARBOX' || part.partKind === 'gearbox') {
+            void loadGearboxPoolForEdit(machine.name, part.partId);
+        } else {
+            setGearboxSpares([]);
+            setGearboxCurrent(null);
+            setSpareGearboxId(null);
+        }
     };
 
     const openComponentDetail = (
@@ -1269,25 +1325,27 @@ export default function PartsBoardPage() {
             selectedPart.part.partType?.toUpperCase() === 'GEARBOX' ||
             selectedPart.part.displayName?.toLowerCase() === 'gearbox';
 
-        // Gearbox must never call sp_Components_Replace (pool swap only)
+        // Gearbox must never call sp_Components_Replace (pool swap — Buncher only)
         if (isGearbox) {
-            if (processCd !== 'STRANDING' || !strandLineCd) {
+            if (!isBuncherBoard(processCd, strandLineCd)) {
                 toast.current?.show({
                     severity: 'warn',
-                    summary: 'Gearbox swap is for Stranding (Buncher/Tubular)',
+                    summary: 'Gearbox swap is only for Stranding → Buncher',
                     life: 4000
                 });
                 return;
             }
 
             let mountId = spareGearboxId;
-            if (!mountId) {
+            if (!mountId || gearboxSpares.length === 0) {
                 try {
-                    const spares = await fetchGearboxAssets(processCd, strandLineCd, dbTarget, {
-                        status: 'SPARE'
-                    });
+                    const assets = await fetchGearboxAssets('STRANDING', 'BUNCHER', dbTarget);
+                    const spares = assets.filter((a) => a.status === 'SPARE');
                     setGearboxSpares(spares);
-                    mountId = spares[0]?.gearboxId ?? null;
+                    mountId =
+                        mountId && spares.some((s) => s.gearboxId === mountId)
+                            ? mountId
+                            : spares[0]?.gearboxId ?? null;
                     setSpareGearboxId(mountId);
                 } catch (e) {
                     toast.current?.show({
@@ -1304,7 +1362,7 @@ export default function PartsBoardPage() {
                 toast.current?.show({
                     severity: 'warn',
                     summary: 'No spare gearbox available',
-                    detail: 'Mark a unit as SPARE first (or free one from REPAIR).',
+                    detail: 'Mark a unit as SPARE in Gearbox master first.',
                     life: 5000
                 });
                 return;
@@ -1325,8 +1383,8 @@ export default function PartsBoardPage() {
                     {
                         machineName: selectedPart.machine.name,
                         newGearboxId: mountId,
-                        processCd,
-                        lineCd: strandLineCd,
+                        processCd: 'STRANDING',
+                        lineCd: 'BUNCHER',
                         runtimeLimit: selectedPart.part.limitHours,
                         removedStatus: 'REPAIR'
                     },
@@ -1822,9 +1880,15 @@ export default function PartsBoardPage() {
                         onClick={() => void openHiddenMachines()}
                         tooltip="Hidden machines"
                     />
-                    <Link href="/parts-board/gearbox-master" className="p-button p-button-rounded p-button-outlined p-button-icon-only" title="Gearbox master">
-                        <span className="p-button-icon pi pi-cog" />
-                    </Link>
+                    {buncherBoard ? (
+                        <Link
+                            href="/parts-board/gearbox-master"
+                            className="p-button p-button-rounded p-button-outlined p-button-icon-only"
+                            title="Gearbox master"
+                        >
+                            <span className="p-button-icon pi pi-cog" />
+                        </Link>
+                    ) : null}
                     <Button
                         icon="pi pi-plus"
                         rounded
@@ -2179,7 +2243,7 @@ export default function PartsBoardPage() {
                         />
                         {((selectedPart.kind === 'fixed' && selectedPart.partKey === 'gearbox') ||
                             selectedPart.part.partType?.toUpperCase() === 'GEARBOX') &&
-                        processCd === 'STRANDING' ? (
+                        buncherBoard ? (
                             <div className="mb-3">
                                 <label className="block mb-2 text-sm font-medium">
                                     Spare gearbox to mount
@@ -2231,8 +2295,8 @@ export default function PartsBoardPage() {
                                     !selectedPart.part.partId ||
                                     (((selectedPart.kind === 'fixed' && selectedPart.partKey === 'gearbox') ||
                                         selectedPart.part.partType?.toUpperCase() === 'GEARBOX') &&
-                                        processCd === 'STRANDING' &&
-                                        !spareGearboxId)
+                                        buncherBoard &&
+                                        gearboxPoolLoading)
                                 }
                             />
                         </div>

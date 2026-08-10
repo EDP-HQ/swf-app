@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
-import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { Message } from 'primereact/message';
 import { ProgressSpinner } from 'primereact/progressspinner';
@@ -20,16 +19,7 @@ import {
     type GearboxAssetRow,
     type GearboxHistoryRow
 } from '@/lib/roller-monitoring/gearboxClient';
-import {
-    PROCESS_OPTIONS,
-    STRAND_LINE_OPTIONS,
-    type ProcessCd,
-    type StrandLineCd
-} from '@/lib/roller-monitoring/processCatalog';
-import {
-    getRollerDbTarget,
-    type RollerDbTarget
-} from '@/lib/roller-monitoring/rollerMonitoringDbTarget';
+import { getRollerDbTarget, type RollerDbTarget } from '@/lib/roller-monitoring/rollerMonitoringDbTarget';
 import './gearbox-master.css';
 
 function statusSeverity(status: string): 'success' | 'warning' | 'danger' | 'info' {
@@ -39,11 +29,13 @@ function statusSeverity(status: string): 'success' | 'warning' | 'danger' | 'inf
     return 'danger';
 }
 
+/** Buncher stranding gearbox pool only */
+const POOL_PROCESS = 'STRANDING' as const;
+const POOL_LINE = 'BUNCHER' as const;
+
 export default function GearboxMasterPage() {
     const toast = useRef<Toast>(null);
     const [dbTarget] = useState<RollerDbTarget>(() => getRollerDbTarget());
-    const [processCd, setProcessCd] = useState<ProcessCd>('STRANDING');
-    const [lineCd, setLineCd] = useState<StrandLineCd>('BUNCHER');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [rows, setRows] = useState<GearboxAssetRow[]>([]);
@@ -59,11 +51,7 @@ export default function GearboxMasterPage() {
         setLoading(true);
         setError(null);
         try {
-            const data = await fetchGearboxAssets(
-                processCd,
-                processCd === 'STRANDING' ? lineCd : null,
-                dbTarget
-            );
+            const data = await fetchGearboxAssets(POOL_PROCESS, POOL_LINE, dbTarget);
             setRows(data);
         } catch (e) {
             setRows([]);
@@ -71,7 +59,7 @@ export default function GearboxMasterPage() {
         } finally {
             setLoading(false);
         }
-    }, [dbTarget, lineCd, processCd]);
+    }, [dbTarget]);
 
     useEffect(() => {
         void load();
@@ -120,7 +108,7 @@ export default function GearboxMasterPage() {
             toast.current?.show({
                 severity: 'warn',
                 summary: 'Still on a machine',
-                detail: 'Swap it off the board first, then change status here.',
+                detail: 'Swap it off the Buncher board first, then change status here.',
                 life: 4500
             });
             return;
@@ -151,12 +139,7 @@ export default function GearboxMasterPage() {
         setHistoryOpen(true);
         setHistoryLoading(true);
         try {
-            const data = await fetchGearboxHistory(
-                processCd,
-                processCd === 'STRANDING' ? lineCd : null,
-                row.gearboxId,
-                dbTarget
-            );
+            const data = await fetchGearboxHistory(POOL_PROCESS, POOL_LINE, row.gearboxId, dbTarget);
             setHistoryRows(data);
         } catch (e) {
             setHistoryRows([]);
@@ -177,28 +160,14 @@ export default function GearboxMasterPage() {
             <header className="gb-master__head">
                 <div>
                     <p className="gb-master__eyebrow">
-                        <Link href="/parts-board">Parts board</Link> / Gearbox master
+                        <Link href="/parts-board">Parts board</Link> / Stranding · Buncher / Gearbox master
                     </p>
                     <h1 className="gb-master__title">Gearbox master</h1>
                     <p className="gb-master__sub">
-                        Pool names, status (spare / repair / in use), lifetime hours, and mount history.
+                        Buncher pool only — names, spare/repair status, lifetime hours, and mount history.
                     </p>
                 </div>
                 <div className="gb-master__actions">
-                    <Dropdown
-                        value={processCd}
-                        options={PROCESS_OPTIONS.map((p) => ({ label: p.label, value: p.code }))}
-                        onChange={(e) => setProcessCd(e.value as ProcessCd)}
-                        className="gb-master__dd"
-                    />
-                    {processCd === 'STRANDING' ? (
-                        <Dropdown
-                            value={lineCd}
-                            options={STRAND_LINE_OPTIONS.map((p) => ({ label: p.label, value: p.code }))}
-                            onChange={(e) => setLineCd(e.value as StrandLineCd)}
-                            className="gb-master__dd"
-                        />
-                    ) : null}
                     <Button icon="pi pi-refresh" rounded outlined loading={loading} onClick={() => void load()} />
                 </div>
             </header>
@@ -222,7 +191,7 @@ export default function GearboxMasterPage() {
                     <ProgressSpinner />
                 </div>
             ) : rows.length === 0 ? (
-                <div className="gb-master__empty">No gearboxes in this pool yet.</div>
+                <div className="gb-master__empty">No gearboxes in the Buncher pool yet.</div>
             ) : (
                 <div className="gb-master__table-wrap">
                     <table className="gb-master__table">
@@ -337,11 +306,7 @@ export default function GearboxMasterPage() {
             </Dialog>
 
             <Dialog
-                header={
-                    historyFor
-                        ? `History · ${gearboxLabel(historyFor)}`
-                        : 'History'
-                }
+                header={historyFor ? `History · ${gearboxLabel(historyFor)}` : 'History'}
                 visible={historyOpen}
                 style={{ width: 'min(96vw, 40rem)' }}
                 onHide={() => setHistoryOpen(false)}
