@@ -241,6 +241,10 @@ export default function GearboxMasterPage() {
                     </p>
                 </div>
                 <div className="gb-master__actions">
+                    <Link href="/parts-board" className="p-button p-button-outlined p-button-secondary">
+                        <span className="p-button-icon p-button-icon-left pi pi-arrow-left" />
+                        <span className="p-button-label">Back</span>
+                    </Link>
                     <Button
                         icon="pi pi-plus"
                         label="Add gearbox"
