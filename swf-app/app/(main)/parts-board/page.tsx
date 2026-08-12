@@ -1075,7 +1075,9 @@ export default function PartsBoardPage() {
                     }
                 }
 
-                if (!oldM.running || newM.running) continue;
+                // Persist install time on Run→Stop and also while still RUN (checkpoint).
+                // Otherwise a refresh reloads last-stop RUNTIME_SEC from DB.
+                if (!oldM.running) continue;
 
                 for (const snap of allComponentLiveSnapshots(oldM, syncMs, saveNowMs)) {
                     if (!snap.part.partId) continue;

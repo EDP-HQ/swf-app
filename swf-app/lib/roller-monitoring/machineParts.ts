@@ -73,12 +73,14 @@ function preserveFixedPart(
         return withFixedPartStats(incoming, incoming.runtimeHours, incoming.limitHours);
     }
 
-    // Machine still RUN: tick forward between dashboard polls.
-    if (machineStillRunning && elapsedHours > 0) {
+    // Machine still RUN: keep live tick. Never jump back to a stale DB value
+    // (RUNTIME_SEC is only checkpointed on poll / stop).
+    if (machineStillRunning) {
         const limitHours = incoming.limitHours || old.limitHours;
+        const liveHours = old.runtimeHours + Math.max(0, elapsedHours);
         return withFixedPartStats(
             { ...incoming, limitHours },
-            old.runtimeHours + elapsedHours,
+            Math.max(incoming.runtimeHours, liveHours),
             limitHours
         );
     }
