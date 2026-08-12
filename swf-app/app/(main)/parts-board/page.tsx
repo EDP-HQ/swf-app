@@ -649,6 +649,9 @@ function MachineCard({
     onDragOverName,
     onDropName,
     onDragEnd,
+    onDragPointerDown,
+    onDragPointerMove,
+    onDragPointerUp,
     onResize
 }: {
     machine: MachineDashboard;
@@ -669,6 +672,9 @@ function MachineCard({
     onDragOverName?: (name: string, where: DropWhere) => void;
     onDropName?: (name: string, where: DropWhere) => void;
     onDragEnd?: () => void;
+    onDragPointerDown?: (name: string, e: React.PointerEvent) => void;
+    onDragPointerMove?: (e: React.PointerEvent) => void;
+    onDragPointerUp?: (e: React.PointerEvent) => void;
     onResize?: (size: CardSize, persist?: boolean) => void;
 }) {
     const cardRef = useRef<HTMLElement | null>(null);
@@ -720,42 +726,33 @@ function MachineCard({
     return (
         <article
             ref={cardRef}
-            className={`pb-machine pb-machine--${cardTone}${dragging ? ' pb-machine--dragging' : ''}${dropTarget ? ` pb-machine--drop pb-machine--drop-${dropWhere || 'below'}` : ''}${size ? ' pb-machine--sized' : ''}`}
+            data-machine-card={machine.name}
+            className={`pb-machine pb-machine--${cardTone}${dragging ? ' pb-machine--dragging' : ''}${dropTarget && dropWhere !== 'below' ? ` pb-machine--drop pb-machine--drop-${dropWhere || 'right'}` : ''}${size ? ' pb-machine--sized' : ''}`}
             style={
                 size
                     ? { width: size.w, flexBasis: size.w, minHeight: size.h, height: size.h }
                     : undefined
             }
-            onDragOver={(e) => {
-                if (!onDragOverName) return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-                const rect = e.currentTarget.getBoundingClientRect();
-                onDragOverName(machine.name, dropZoneFromPoint(rect, e.clientX, e.clientY));
-            }}
-            onDrop={(e) => {
-                e.preventDefault();
-                const rect = e.currentTarget.getBoundingClientRect();
-                onDropName?.(machine.name, dropZoneFromPoint(rect, e.clientX, e.clientY));
-            }}
-            onDragEnd={() => onDragEnd?.()}
         >
             <header className="pb-machine__head">
-                <button
-                    type="button"
+                <span
                     className="pb-machine__drag"
-                    draggable
-                    title="Drag to rearrange"
+                    title="Drag to rearrange or stack"
                     aria-label={`Rearrange ${machine.name}`}
-                    onDragStart={(e) => {
-                        e.dataTransfer.setData('text/plain', machine.name);
-                        e.dataTransfer.effectAllowed = 'move';
-                        onDragStartName?.(machine.name);
+                    role="button"
+                    tabIndex={0}
+                    onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        onDragPointerDown?.(machine.name, e);
                     }}
-                    onClick={(e) => e.preventDefault()}
+                    onPointerMove={(e) => onDragPointerMove?.(e)}
+                    onPointerUp={(e) => onDragPointerUp?.(e)}
+                    onPointerCancel={() => onDragEnd?.()}
                 >
                     <i className="pi pi-bars" />
-                </button>
+                </span>
                 <h3 className="pb-machine__name">{machine.name}</h3>
                 <div className="pb-machine__head-actions">
                     {onHideMachine ? (
@@ -1643,6 +1640,59 @@ export default function PartsBoardPage() {
         setLayoutDirty(true);
     };
 
+    const dragSessionRef = useRef<{
+        name: string;
+        dropName: string | null;
+        dropWhere: DropWhere | null;
+    } | null>(null);
+
+    const hitTestLayoutDrop = (clientX: number, clientY: number) => {
+        const dragging = dragSessionRef.current?.name;
+        if (!dragging) return null;
+        const stack = document
+            .elementFromPoint(clientX, clientY)
+            ?.closest('[data-stack-under]') as HTMLElement | null;
+        if (stack?.dataset.stackUnder && stack.dataset.stackUnder !== dragging) {
+            return { name: stack.dataset.stackUnder, where: 'below' as const };
+        }
+        const card = document
+            .elementFromPoint(clientX, clientY)
+            ?.closest('[data-machine-card]') as HTMLElement | null;
+        if (card?.dataset.machineCard && card.dataset.machineCard !== dragging) {
+            const rect = card.getBoundingClientRect();
+            const zone = dropZoneFromPoint(rect, clientX, clientY);
+            return { name: card.dataset.machineCard, where: zone === 'below' ? 'right' : zone };
+        }
+        return null;
+    };
+
+    const onDragPointerDown = (name: string) => {
+        dragSessionRef.current = { name, dropName: null, dropWhere: null };
+        setDragName(name);
+        setDropName(null);
+        setDropWhere(null);
+    };
+
+    const onDragPointerMove = (e: React.PointerEvent) => {
+        if (!dragSessionRef.current) return;
+        const hit = hitTestLayoutDrop(e.clientX, e.clientY);
+        dragSessionRef.current.dropName = hit?.name ?? null;
+        dragSessionRef.current.dropWhere = hit?.where ?? null;
+        setDropName(hit?.name ?? null);
+        setDropWhere(hit?.where ?? null);
+    };
+
+    const onDragPointerUp = () => {
+        const session = dragSessionRef.current;
+        dragSessionRef.current = null;
+        if (session?.dropName && session.dropWhere) {
+            handleCardReorder(session.name, session.dropName, session.dropWhere);
+        }
+        setDragName(null);
+        setDropName(null);
+        setDropWhere(null);
+    };
+
     const handleCardResize = (machineName: string, size: CardSize) => {
         setCardSizes((prev) => ({ ...prev, [machineName]: size }));
         setLayoutDirty(true);
@@ -2344,50 +2394,56 @@ export default function PartsBoardPage() {
                     No machines registered for this process yet. Click Add machine to key one in.
                 </div>
             ) : (
-                <div className="pb-machine-grid">
+                <div className={`pb-machine-grid${dragName ? ' pb-machine-grid--dragging' : ''}`}>
                     {visibleColumns.map((col) => (
                         <div key={col.map((m) => m.name).join('|')} className="pb-machine-col">
                             {col.map((machine) => (
-                                <MachineCard
-                                    key={machine.name}
-                                    machine={machine}
-                                    syncEpochMs={syncEpochMs}
-                                    nowMs={nowMs}
-                                    search={searchLower}
-                                    componentsOnly={!buncherBoard}
-                                    onOpenFullscreen={() => openMachine(machine.name)}
-                                    onOpenRoller={(lr) => openRollerEdit(machine, lr.roller)}
-                                    onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
-                                    onOpenCustom={(part) => openCustomEdit(machine, part)}
-                                    size={cardSizes[machine.name] ?? null}
-                                    dragging={dragName === machine.name}
-                                    dropTarget={dropName === machine.name && dragName !== machine.name}
-                                    dropWhere={dropName === machine.name ? dropWhere : null}
-                                    onDragStartName={(name) => {
-                                        setDragName(name);
-                                        setDropName(name);
-                                        setDropWhere('right');
-                                    }}
-                                    onDragOverName={(name, where) => {
-                                        setDropName(name);
-                                        setDropWhere(where);
-                                    }}
-                                    onDropName={(name, where) => {
-                                        if (dragName) handleCardReorder(dragName, name, where);
-                                        setDragName(null);
-                                        setDropName(null);
-                                        setDropWhere(null);
-                                    }}
-                                    onDragEnd={() => {
-                                        setDragName(null);
-                                        setDropName(null);
-                                        setDropWhere(null);
-                                    }}
-                                    onResize={(size) => handleCardResize(machine.name, size)}
-                                    onHideMachine={() =>
-                                        setConfirmRemove({ kind: 'machine', name: machine.name })
-                                    }
-                                />
+                                <div key={machine.name} className="pb-machine-slot">
+                                    <MachineCard
+                                        machine={machine}
+                                        syncEpochMs={syncEpochMs}
+                                        nowMs={nowMs}
+                                        search={searchLower}
+                                        componentsOnly={!buncherBoard}
+                                        onOpenFullscreen={() => openMachine(machine.name)}
+                                        onOpenRoller={(lr) => openRollerEdit(machine, lr.roller)}
+                                        onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
+                                        onOpenCustom={(part) => openCustomEdit(machine, part)}
+                                        size={cardSizes[machine.name] ?? null}
+                                        dragging={dragName === machine.name}
+                                        dropTarget={
+                                            dropName === machine.name &&
+                                            dragName !== machine.name &&
+                                            dropWhere !== 'below'
+                                        }
+                                        dropWhere={dropName === machine.name ? dropWhere : null}
+                                        onDragPointerDown={onDragPointerDown}
+                                        onDragPointerMove={onDragPointerMove}
+                                        onDragPointerUp={onDragPointerUp}
+                                        onDragEnd={() => {
+                                            dragSessionRef.current = null;
+                                            setDragName(null);
+                                            setDropName(null);
+                                            setDropWhere(null);
+                                        }}
+                                        onResize={(size) => handleCardResize(machine.name, size)}
+                                        onHideMachine={() =>
+                                            setConfirmRemove({ kind: 'machine', name: machine.name })
+                                        }
+                                    />
+                                    {dragName && dragName !== machine.name ? (
+                                        <div
+                                            data-stack-under={machine.name}
+                                            className={`pb-stack-target${
+                                                dropName === machine.name && dropWhere === 'below'
+                                                    ? ' pb-stack-target--active'
+                                                    : ''
+                                            }`}
+                                        >
+                                            Drop here to stack below
+                                        </div>
+                                    ) : null}
+                                </div>
                             ))}
                         </div>
                     ))}
