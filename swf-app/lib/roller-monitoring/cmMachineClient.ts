@@ -55,7 +55,7 @@ function mapMachine(row: Record<string, unknown>): CmMachineRow {
         machineName: rowStr(row, 'MACHINE_NM', 'MACHINE_NAME'),
         visible: useYn !== 'N',
         machineNo: rowStr(row, 'MACHINE_NO', 'MACHINE_CD'),
-        running: rowStr(row, 'RUN_DN_TYPE') === '01'
+        running: !!rowStr(row, 'MACHINE_NO', 'MACHINE_CD') && rowStr(row, 'RUN_DN_TYPE') === '01'
     };
 }
 

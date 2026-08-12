@@ -101,7 +101,14 @@ import {
     type RollerDbTarget
 } from '@/lib/roller-monitoring/rollerMonitoringDbTarget';
 import { computeRollerStatus, usagePct } from '@/lib/roller-monitoring/rollerStatus';
-import type { FixedPartRow, MachineDashboard, MachineFixedPartKey, PartHealthStatus, RollerRow } from '@/lib/roller-monitoring/types';
+import {
+    plantRunStatus,
+    type FixedPartRow,
+    type MachineDashboard,
+    type MachineFixedPartKey,
+    type PartHealthStatus,
+    type RollerRow
+} from '@/lib/roller-monitoring/types';
 import './parts-board.css';
 import './parts-board.fullscreen.css';
 
@@ -688,7 +695,8 @@ function MachineCard({
         : machine.rollers.map((r) => buildLiveRoller(r, machine, syncEpochMs, nowMs));
 
     const showFixed = (part: FixedPartRow) => !componentsOnly || !!part.partId;
-    const cardTone = machine.running ? 'run' : 'idle';
+    const runStatus = plantRunStatus(machine);
+    const cardTone = runStatus === 'run' ? 'run' : runStatus === 'not_found' ? 'unknown' : 'idle';
     const hasAnyComponent =
         !!machine.gearbox.partId ||
         !!machine.skipperFront.partId ||
@@ -781,9 +789,30 @@ function MachineCard({
                         tooltip="Full screen"
                         onClick={onOpenFullscreen}
                     />
-                    <span className={`pb-machine__state ${machine.running ? 'pb-machine__state--run' : ''}`}>
-                        <i className={`pi ${machine.running ? 'pi-play-circle' : 'pi-stop-circle'}`} />
-                        {machine.running ? 'Run' : 'Stop'}
+                    <span
+                        className={`pb-machine__state${
+                            runStatus === 'run'
+                                ? ' pb-machine__state--run'
+                                : runStatus === 'not_found'
+                                  ? ' pb-machine__state--missing'
+                                  : ''
+                        }`}
+                        title={
+                            runStatus === 'not_found'
+                                ? 'No plant machine with this name — Run/Stop unavailable'
+                                : undefined
+                        }
+                    >
+                        <i
+                            className={`pi ${
+                                runStatus === 'run'
+                                    ? 'pi-play-circle'
+                                    : runStatus === 'not_found'
+                                      ? 'pi-question-circle'
+                                      : 'pi-stop-circle'
+                            }`}
+                        />
+                        {runStatus === 'run' ? 'Run' : runStatus === 'not_found' ? 'Not found' : 'Stop'}
                     </span>
                 </div>
             </header>
@@ -1255,6 +1284,7 @@ export default function PartsBoardPage() {
         () => (fullscreenMachineName ? machines.find((m) => m.name === fullscreenMachineName) ?? null : null),
         [machines, fullscreenMachineName]
     );
+    const fullscreenRunStatus = fullscreenMachine ? plantRunStatus(fullscreenMachine) : null;
 
     const openMachine = (name: string, rollerKey?: string) => {
         setFullscreenMachineName(name);
@@ -2449,8 +2479,20 @@ export default function PartsBoardPage() {
                         <div className="flex align-items-center gap-2 flex-wrap">
                             <span className="font-semibold">{fullscreenMachine.name}</span>
                             <Tag
-                                value={fullscreenMachine.running ? 'RUN' : 'STOP'}
-                                severity={fullscreenMachine.running ? 'success' : 'danger'}
+                                value={
+                                    fullscreenRunStatus === 'run'
+                                        ? 'RUN'
+                                        : fullscreenRunStatus === 'not_found'
+                                          ? 'NOT FOUND'
+                                          : 'STOP'
+                                }
+                                severity={
+                                    fullscreenRunStatus === 'run'
+                                        ? 'success'
+                                        : fullscreenRunStatus === 'not_found'
+                                          ? 'warning'
+                                          : 'danger'
+                                }
                                 rounded
                             />
                             <span className="text-sm text-color-secondary">

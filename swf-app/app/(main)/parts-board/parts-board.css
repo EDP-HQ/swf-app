@@ -152,6 +152,7 @@
 .pb-machine--warn { border-left: 4px solid var(--pb-due); }
 .pb-machine--run { border-left: 4px solid var(--pb-run); }
 .pb-machine--idle { border-left: 4px solid var(--pb-stop); }
+.pb-machine--unknown { border-left: 4px solid var(--pb-due); }
 .pb-machine--dragging { opacity: 0.55; }
 .pb-machine--drop {
     border-color: var(--primary-color);
@@ -337,6 +338,10 @@
 
 .pb-machine__state--run {
     color: var(--pb-run);
+}
+
+.pb-machine__state--missing {
+    color: var(--pb-due);
 }
 
 .pb-machine__state--run .pi {
