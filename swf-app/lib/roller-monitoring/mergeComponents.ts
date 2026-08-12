@@ -67,17 +67,30 @@ function customPartFromRow(row: Record<string, unknown>): FixedPartRow {
     );
 }
 
-/** Build empty machine shells from the process machine registry (no rollers). */
-export function machinesFromRegistry(machineNames: string[]): MachineDashboard[] {
-    return machineNames
-        .map((name) => name.trim())
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-        .map((name) =>
+export type RegistryMachineInput = {
+    machineName: string;
+    machineNo?: string;
+    running?: boolean;
+};
+
+/** Build machine shells from the process registry (plant Run/Stop when present). */
+export function machinesFromRegistry(
+    machines: Array<string | RegistryMachineInput>
+): MachineDashboard[] {
+    return machines
+        .map((m) => (typeof m === 'string' ? { machineName: m } : m))
+        .map((m) => ({
+            machineName: m.machineName.trim(),
+            machineNo: m.machineNo?.trim() || '',
+            running: !!m.running
+        }))
+        .filter((m) => m.machineName)
+        .sort((a, b) => a.machineName.localeCompare(b.machineName))
+        .map((m) =>
             recountMachine({
-                name,
-                machineNo: '',
-                running: false,
+                name: m.machineName,
+                machineNo: m.machineNo,
+                running: m.running,
                 rollers: [],
                 gearbox: createGearbox(),
                 skipperFront: createSkipperFront(),

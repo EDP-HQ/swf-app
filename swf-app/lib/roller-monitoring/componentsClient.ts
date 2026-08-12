@@ -7,6 +7,7 @@ import type { MachineFixedPartKey } from './types';
 export type ComponentsApiEndpoint =
     | 'select'
     | 'history'
+    | 'onoff'
     | 'replace'
     | 'remove'
     | 'updateruntime'
@@ -129,6 +130,46 @@ export async function fetchComponents(
         });
     }
     return rows;
+}
+
+/** Plant Run/Stop for non-Buncher processes (Drawing, Closing, …). */
+export async function fetchComponentsOnoff(
+    target = getRollerDbTarget(),
+    query?: { processCd?: string; lineCd?: string | null }
+): Promise<unknown> {
+    const params = new URLSearchParams();
+    if (query?.processCd) params.set('process_cd', query.processCd);
+    if (query?.lineCd) params.set('line_cd', query.lineCd);
+    const qs = params.toString();
+    const url = `${resolveComponentsUrl('onoff', target)}${qs ? `?${qs}` : ''}`;
+
+    let res: Response;
+    try {
+        res = await fetch(url, {
+            cache: 'no-store',
+            headers: { Accept: 'application/json' }
+        });
+    } catch (e) {
+        const direct = directApiBase();
+        const hint = direct
+            ? `Cannot reach swf-api at ${direct}. Start swf-api (port 3200).`
+            : 'Cannot reach API. Start swf-api and swf-app, or set NEXT_PUBLIC_SWF_API_URL in .env.local.';
+        const detail = e instanceof Error ? e.message : 'Network error';
+        throw new Error(`${hint} (${detail})`);
+    }
+
+    let body: unknown = null;
+    try {
+        body = await res.json();
+    } catch {
+        body = null;
+    }
+
+    if (!res.ok) {
+        throw new Error(parseErrorMessage(body, res.status));
+    }
+
+    return body;
 }
 
 function historyRowFromRecord(row: Record<string, unknown>): ComponentHistoryRow {

@@ -9,6 +9,8 @@ export type CmMachineRow = {
     lineCd: StrandLineCd | null;
     machineName: string;
     visible: boolean;
+    machineNo: string;
+    running: boolean;
 };
 
 function directApiBase(): string {
@@ -51,7 +53,9 @@ function mapMachine(row: Record<string, unknown>): CmMachineRow {
         processCd: rowStr(row, 'PROCESS_CD').toUpperCase() as ProcessCd,
         lineCd: line ? (line.toUpperCase() as StrandLineCd) : null,
         machineName: rowStr(row, 'MACHINE_NM', 'MACHINE_NAME'),
-        visible: useYn !== 'N'
+        visible: useYn !== 'N',
+        machineNo: rowStr(row, 'MACHINE_NO', 'MACHINE_CD'),
+        running: rowStr(row, 'RUN_DN_TYPE') === '01'
     };
 }
 

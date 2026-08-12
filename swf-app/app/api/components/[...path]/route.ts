@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { proxyErrorPayload, proxySwfApi } from '@/lib/api/swfApiProxy';
 
-const ALLOWED_GET = new Set(['select', 'history', 'machines', 'gearbox', 'gearbox/history']);
+const ALLOWED_GET = new Set(['select', 'history', 'onoff', 'machines', 'gearbox', 'gearbox/history']);
 const ALLOWED_POST = new Set([
     'replace',
     'remove',

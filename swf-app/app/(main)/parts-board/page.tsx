@@ -55,6 +55,7 @@ import {
 } from '@/lib/roller-monitoring/componentCatalog';
 import {
     fetchComponents,
+    fetchComponentsOnoff,
     fetchComponentHistory,
     insertComponent,
     removeComponent,
@@ -83,6 +84,7 @@ import {
     type GearboxAssetRow
 } from '@/lib/roller-monitoring/gearboxClient';
 import { applyComponentsToMachines, applyRollersToRegistryMachines, machinesFromRegistry } from '@/lib/roller-monitoring/mergeComponents';
+import { applyOnoffToMachines } from '@/lib/roller-monitoring/mergeDashboard';
 import {
     isBuncherBoard,
     isBuncherMachineName,
@@ -779,20 +781,10 @@ function MachineCard({
                         tooltip="Full screen"
                         onClick={onOpenFullscreen}
                     />
-                    {!componentsOnly ? (
-                        <span className={`pb-machine__state ${machine.running ? 'pb-machine__state--run' : ''}`}>
-                            <i className={`pi ${machine.running ? 'pi-play-circle' : 'pi-stop-circle'}`} />
-                            {machine.running ? 'Run' : 'Stop'}
-                        </span>
-                    ) : (
-                        <span className="pb-machine__state">
-                            {machine.extraParts.length +
-                                (machine.gearbox.partId ? 1 : 0) +
-                                (machine.skipperFront.partId ? 1 : 0) +
-                                (machine.skipperBack.partId ? 1 : 0)}{' '}
-                            parts
-                        </span>
-                    )}
+                    <span className={`pb-machine__state ${machine.running ? 'pb-machine__state--run' : ''}`}>
+                        <i className={`pi ${machine.running ? 'pi-play-circle' : 'pi-stop-circle'}`} />
+                        {machine.running ? 'Run' : 'Stop'}
+                    </span>
                 </div>
             </header>
 
@@ -985,7 +977,7 @@ export default function PartsBoardPage() {
             const registry = await fetchCmMachines(activeProcess, activeLine, target);
             if (gen !== loadGenRef.current) return;
 
-            const [rollerData, components] = await Promise.all([
+            const [rollerData, components, plantOnoff] = await Promise.all([
                 useBuncher
                     ? fetchRollerDashboard(
                           target,
@@ -1002,7 +994,13 @@ export default function PartsBoardPage() {
                 }).catch((e) => {
                     console.warn('components overlay failed', e);
                     return [];
-                })
+                }),
+                useBuncher
+                    ? Promise.resolve(null)
+                    : fetchComponentsOnoff(target, {
+                          processCd: activeProcess,
+                          lineCd: activeLine
+                      }).catch(() => null)
             ]);
 
             if (gen !== loadGenRef.current) return;
@@ -1012,28 +1010,30 @@ export default function PartsBoardPage() {
                 (activeProcess !== 'STRANDING' || strandLineCdRef.current === activeLine);
             if (!boardStillMatches) return;
 
-            const allowedNames = registry
+            const allowed = registry
                 .filter((m) => m.visible)
-                .filter((m) => (useBuncher ? true : !isBuncherMachineName(m.machineName)))
-                .map((m) => m.machineName);
+                .filter((m) => (useBuncher ? true : !isBuncherMachineName(m.machineName)));
 
-            let incoming = machinesFromRegistry(allowedNames);
+            let incoming = machinesFromRegistry(allowed);
 
             if (useBuncher && rollerData) {
-                const prev = machinesRef.current;
-                const syncMs = syncEpochMsRef.current;
-                const saveNowMs = Date.now();
-
                 incoming = applyRollersToRegistryMachines(incoming, rollerData.machines);
+            } else if (plantOnoff) {
+                incoming = applyOnoffToMachines(incoming, plantOnoff);
+            }
 
-                const savedSecByPartId = new Map<string, number>();
-                const savedRollerSecByBin = new Map<string, number>();
-                const saveTasks: Promise<void>[] = [];
+            const prev = machinesRef.current;
+            const syncMs = syncEpochMsRef.current;
+            const saveNowMs = Date.now();
+            const savedSecByPartId = new Map<string, number>();
+            const savedRollerSecByBin = new Map<string, number>();
+            const saveTasks: Promise<void>[] = [];
 
-                for (const newM of incoming) {
-                    const oldM = prev.find((p) => p.name === newM.name);
-                    if (!oldM) continue;
+            for (const newM of incoming) {
+                const oldM = prev.find((p) => p.name === newM.name);
+                if (!oldM) continue;
 
+                if (useBuncher) {
                     for (const snap of rollersStoppedTicking(oldM, newM, syncMs, saveNowMs)) {
                         if (!snap.roller.rollerId && !snap.roller.binLocation) continue;
                         savedRollerSecByBin.set(snap.roller.binLocation, snap.runtimeSec);
@@ -1044,63 +1044,58 @@ export default function PartsBoardPage() {
                             })
                         );
                     }
-
-                    if (!oldM.running || newM.running) continue;
-
-                    for (const snap of allComponentLiveSnapshots(oldM, syncMs, saveNowMs)) {
-                        if (!snap.part.partId) continue;
-                        savedSecByPartId.set(snap.part.partId, snap.runtimeSec);
-                        saveTasks.push(
-                            updateComponentRuntime(snap.runtimeSec, target, {
-                                partId: snap.part.partId,
-                                ...(snap.partKey
-                                    ? { machineName: oldM.name, partKey: snap.partKey }
-                                    : {})
-                            })
-                        );
-                    }
                 }
 
-                if (saveTasks.length > 0) {
-                    try {
-                        await Promise.all(saveTasks);
-                    } catch (saveErr) {
-                        toast.current?.show({
-                            severity: 'warn',
-                            summary: 'Runtime save failed',
-                            detail: saveErr instanceof Error ? saveErr.message : undefined,
-                            life: 5000
-                        });
-                    }
-                }
+                if (!oldM.running || newM.running) continue;
 
-                if (savedRollerSecByBin.size > 0) {
-                    incoming = incoming.map((m) => applySavedRollerRuntime(m, savedRollerSecByBin));
+                for (const snap of allComponentLiveSnapshots(oldM, syncMs, saveNowMs)) {
+                    if (!snap.part.partId) continue;
+                    savedSecByPartId.set(snap.part.partId, snap.runtimeSec);
+                    saveTasks.push(
+                        updateComponentRuntime(snap.runtimeSec, target, {
+                            partId: snap.part.partId,
+                            ...(snap.partKey
+                                ? { machineName: oldM.name, partKey: snap.partKey }
+                                : {})
+                        })
+                    );
                 }
-                if (savedSecByPartId.size > 0) {
-                    incoming = incoming.map((m) => applySavedAllComponentRuntime(m, savedSecByPartId));
+            }
+
+            if (saveTasks.length > 0) {
+                try {
+                    await Promise.all(saveTasks);
+                } catch (saveErr) {
+                    toast.current?.show({
+                        severity: 'warn',
+                        summary: 'Runtime save failed',
+                        detail: saveErr instanceof Error ? saveErr.message : undefined,
+                        life: 5000
+                    });
                 }
+            }
 
-                incoming = applyComponentsToMachines(incoming, components);
-
-                if (gen !== loadGenRef.current) return;
-                if (
-                    processCdRef.current !== activeProcess ||
-                    strandLineCdRef.current !== activeLine
-                ) {
-                    return;
-                }
-
-                const elapsed = (Date.now() - syncMs) / 3_600_000;
-                setMachines((prevState) => mergePreservedMachines(incoming, prevState, elapsed));
-                setLastSync(rollerData.lastSync);
-                setSyncEpochMs(Date.now());
-                return;
+            if (savedRollerSecByBin.size > 0) {
+                incoming = incoming.map((m) => applySavedRollerRuntime(m, savedRollerSecByBin));
             }
 
             incoming = applyComponentsToMachines(incoming, components);
-            setMachines(incoming);
-            setLastSync(new Date().toISOString());
+
+            if (savedSecByPartId.size > 0) {
+                incoming = incoming.map((m) => applySavedAllComponentRuntime(m, savedSecByPartId));
+            }
+
+            if (gen !== loadGenRef.current) return;
+            if (
+                processCdRef.current !== activeProcess ||
+                (activeProcess === 'STRANDING' && strandLineCdRef.current !== activeLine)
+            ) {
+                return;
+            }
+
+            const elapsed = (Date.now() - syncMs) / 3_600_000;
+            setMachines((prevState) => mergePreservedMachines(incoming, prevState, elapsed));
+            setLastSync(useBuncher && rollerData ? rollerData.lastSync : new Date().toISOString());
             setSyncEpochMs(Date.now());
         } catch (e) {
             if (gen !== loadGenRef.current) return;

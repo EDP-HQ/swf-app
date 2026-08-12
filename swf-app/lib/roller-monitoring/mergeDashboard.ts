@@ -47,18 +47,47 @@ function buildActiveSet(rows: Record<string, unknown>[]) {
     return set;
 }
 
+function normalizeOnoffName(name: string): string {
+    return name
+        .trim()
+        .toUpperCase()
+        .replace(/^SWF\s+/i, '')
+        .replace(/\s*\([^)]*\)\s*$/, '')
+        .replace(/\s+/g, ' ');
+}
+
 function buildOnoffMap(rows: Record<string, unknown>[]) {
     const map = new Map<string, { running: boolean; machineNo: string }>();
+    const setHit = (key: string, hit: { running: boolean; machineNo: string }) => {
+        if (!key) return;
+        map.set(key, hit);
+        map.set(normalizeOnoffName(key), hit);
+    };
     for (const row of rows) {
-        const name = rowStr(row, 'MachineName', 'MACHINE_NAME', 'MACHINE_CD');
-        if (!name) continue;
-        const runType = rowStr(row, 'RUN_DN_TYPE');
-        map.set(name, {
-            running: runType === '01',
+        const hit = {
+            running: rowStr(row, 'RUN_DN_TYPE') === '01',
             machineNo: rowStr(row, 'MACHINE_NO', 'MACHINE_CD')
-        });
+        };
+        setHit(rowStr(row, 'MachineName', 'MACHINE_NAME', 'MACHINE_NM'), hit);
+        setHit(rowStr(row, 'MACHINE_DESC'), hit);
+        setHit(rowStr(row, 'MACHINE_DESC_SHORT'), hit);
     }
     return map;
+}
+
+/** Overlay plant Run/Stop onto registry machines (Drawing, Closing, …). */
+export function applyOnoffToMachines(machines: MachineDashboard[], onoff: unknown): MachineDashboard[] {
+    const onoffMap = buildOnoffMap(asRecordArray(onoff));
+    if (!onoffMap.size) return machines;
+    return machines.map((m) => {
+        const hit = onoffMap.get(m.name) ?? onoffMap.get(normalizeOnoffName(m.name));
+        if (!hit) return m;
+        return recountMachine({
+            ...m,
+            machineNo: hit.machineNo || m.machineNo,
+            running: hit.running
+        });
+    });
 }
 
 function groupListByMachine(rows: Record<string, unknown>[]) {
@@ -81,7 +110,7 @@ export function mergeRollerDashboard(input: MergeInput): RollerDashboardData {
     const machines: MachineDashboard[] = [];
 
     for (const [machineName, rollers] of grouped) {
-        const onoff = onoffMap.get(machineName);
+        const onoff = onoffMap.get(machineName) ?? onoffMap.get(normalizeOnoffName(machineName));
         const rollerRows: RollerRow[] = rollers.map((row, index) => {
             const bin = rowStr(row, 'BIN_LOCATION_CD');
             const runtime = runtimeMap.get(bin);
