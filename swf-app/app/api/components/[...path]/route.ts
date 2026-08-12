@@ -10,6 +10,7 @@ const ALLOWED_POST = new Set([
     'insert',
     'machines',
     'machines/visible',
+    'machines/rename',
     'gearbox/swap',
     'gearbox/status',
     'gearbox/update',

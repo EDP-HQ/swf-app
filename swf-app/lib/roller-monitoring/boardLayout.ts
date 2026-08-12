@@ -98,6 +98,18 @@ export function saveBoardLayout(
     }
 }
 
+export function renameInLayout(layout: BoardLayout, oldName: string, newName: string): BoardLayout {
+    const from = oldName.trim();
+    const to = newName.trim();
+    if (!from || !to || from === to) return layout;
+    const columns = layout.columns.map((col) => col.map((n) => (n === from ? to : n)));
+    const sizes: Record<string, CardSize> = {};
+    for (const [name, size] of Object.entries(layout.sizes)) {
+        sizes[name === from ? to : name] = size;
+    }
+    return { columns, order: flattenColumns(columns), sizes };
+}
+
 export function clearBoardLayout(processCd: ProcessCd, lineCd: StrandLineCd | null): void {
     if (typeof window === 'undefined') return;
     try {

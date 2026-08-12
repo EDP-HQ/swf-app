@@ -71,12 +71,13 @@ import {
     loadBoardLayout,
     moveInColumns,
     normalizeColumns,
+    renameInLayout,
     saveBoardLayout,
     type BoardLayout,
     type CardSize,
     type DropWhere
 } from '@/lib/roller-monitoring/boardLayout';
-import { fetchCmMachines, insertCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
+import { fetchCmMachines, insertCmMachine, renameCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
 import {
     fetchGearboxAssets,
     gearboxLabel,
@@ -653,6 +654,7 @@ function MachineCard({
     onOpenFixed,
     onOpenCustom,
     onHideMachine,
+    onRenameMachine,
     onDragStartName,
     onDragOverName,
     onDropName,
@@ -676,6 +678,7 @@ function MachineCard({
     onOpenFixed: (partKey: MachineFixedPartKey, part: FixedPartRow) => void;
     onOpenCustom: (part: FixedPartRow) => void;
     onHideMachine?: () => void;
+    onRenameMachine?: () => void;
     onDragStartName?: (name: string) => void;
     onDragOverName?: (name: string, where: DropWhere) => void;
     onDropName?: (name: string, where: DropWhere) => void;
@@ -764,6 +767,21 @@ function MachineCard({
                 </span>
                 <h3 className="pb-machine__name">{machine.name}</h3>
                 <div className="pb-machine__head-actions">
+                    {onRenameMachine ? (
+                        <Button
+                            icon="pi pi-pencil"
+                            rounded
+                            text
+                            size="small"
+                            className="pb-machine__fs-btn"
+                            aria-label="Edit machine name"
+                            tooltip="Edit machine name"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onRenameMachine();
+                            }}
+                        />
+                    ) : null}
                     {onHideMachine ? (
                         <Button
                             icon="pi pi-times"
@@ -953,6 +971,10 @@ export default function PartsBoardPage() {
     const [addMachineNameInput, setAddMachineNameInput] = useState('');
     const [addMachineCompany, setAddMachineCompany] = useState(COMPONENT_DEFAULT_COMPANY);
     const [addMachineFactory, setAddMachineFactory] = useState(COMPONENT_DEFAULT_FACTORY);
+    const [renameMachineOpen, setRenameMachineOpen] = useState(false);
+    const [renameMachineSaving, setRenameMachineSaving] = useState(false);
+    const [renameMachineFrom, setRenameMachineFrom] = useState('');
+    const [renameMachineInput, setRenameMachineInput] = useState('');
     const [hiddenMachinesOpen, setHiddenMachinesOpen] = useState(false);
     const [hiddenMachines, setHiddenMachines] = useState<{ machineName: string; company: string; factory: string }[]>(
         []
@@ -1878,6 +1900,77 @@ export default function PartsBoardPage() {
         setAddMachineOpen(true);
     };
 
+    const openRenameMachine = (name: string) => {
+        setRenameMachineFrom(name);
+        setRenameMachineInput(name);
+        setRenameMachineOpen(true);
+    };
+
+    const handleRenameMachine = async () => {
+        const oldName = renameMachineFrom.trim();
+        const newName = renameMachineInput.trim();
+        if (!oldName) return;
+        if (!newName) {
+            toast.current?.show({ severity: 'warn', summary: 'Machine name is required', life: 3000 });
+            return;
+        }
+        if (newName === oldName) {
+            setRenameMachineOpen(false);
+            return;
+        }
+        if (processCd === 'STRANDING' && !strandLineCd) {
+            toast.current?.show({ severity: 'warn', summary: 'Select Buncher or Tubular', life: 3000 });
+            return;
+        }
+
+        setRenameMachineSaving(true);
+        const lineCd = processCd === 'STRANDING' ? strandLineCd : null;
+        try {
+            await renameCmMachine(
+                {
+                    processCd,
+                    lineCd,
+                    oldMachineName: oldName,
+                    newMachineName: newName
+                },
+                dbTarget
+            );
+
+            const nextLayout = renameInLayout(
+                { columns: layoutColumns, order: layoutColumns.flat(), sizes: cardSizes },
+                oldName,
+                newName
+            );
+            const nextSaved = renameInLayout(savedLayout, oldName, newName);
+            setLayoutColumns(nextLayout.columns);
+            setCardSizes(nextLayout.sizes);
+            setSavedLayout(nextSaved);
+            if (!layoutDirty) {
+                saveBoardLayout(processCd, lineCd, nextLayout.columns.length ? nextLayout : nextSaved);
+            }
+            if (fullscreenMachineName === oldName) setFullscreenMachineName(newName);
+            if (addMachineName === oldName) setAddMachineName(newName);
+
+            toast.current?.show({
+                severity: 'success',
+                summary: 'Machine renamed',
+                detail: `${oldName} → ${newName}`,
+                life: 4000
+            });
+            setRenameMachineOpen(false);
+            await loadDashboard(true, dbTarget);
+        } catch (e) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Rename failed',
+                detail: e instanceof Error ? e.message : undefined,
+                life: 5000
+            });
+        } finally {
+            setRenameMachineSaving(false);
+        }
+    };
+
     const handleAddMachine = async () => {
         const name = addMachineNameInput.trim();
         if (!name) {
@@ -2451,6 +2544,7 @@ export default function PartsBoardPage() {
                                             setDropWhere(null);
                                         }}
                                         onResize={(size) => handleCardResize(machine.name, size)}
+                                        onRenameMachine={() => openRenameMachine(machine.name)}
                                         onHideMachine={() =>
                                             setConfirmRemove({ kind: 'machine', name: machine.name })
                                         }
@@ -3024,6 +3118,52 @@ export default function PartsBoardPage() {
                             loading={addMachineSaving}
                             disabled={!addMachineNameInput.trim()}
                             onClick={() => void handleAddMachine()}
+                        />
+                    </div>
+                </div>
+            </Dialog>
+
+            <Dialog
+                className="pb-add-dialog"
+                header="Edit machine name"
+                visible={renameMachineOpen}
+                style={{ width: 'min(92vw, 28rem)' }}
+                onHide={() => setRenameMachineOpen(false)}
+                dismissableMask
+            >
+                <div className="flex flex-column gap-3">
+                    <Message
+                        severity="info"
+                        text="Renames this machine on the board and its components. Use the plant name (e.g. 12X13HSP) if you want Run/Stop to match."
+                    />
+                    <div>
+                        <label className="block mb-2 text-sm font-medium">Current name</label>
+                        <InputText value={renameMachineFrom} className="w-full" disabled />
+                    </div>
+                    <div>
+                        <label className="block mb-2 text-sm font-medium">New name</label>
+                        <InputText
+                            value={renameMachineInput}
+                            onChange={(e) => setRenameMachineInput(e.target.value)}
+                            placeholder="Machine name"
+                            className="w-full"
+                            maxLength={100}
+                            autoFocus
+                        />
+                    </div>
+                    <div className="flex gap-2 justify-content-end">
+                        <Button
+                            label="Cancel"
+                            text
+                            onClick={() => setRenameMachineOpen(false)}
+                            disabled={renameMachineSaving}
+                        />
+                        <Button
+                            label="Save"
+                            icon="pi pi-check"
+                            loading={renameMachineSaving}
+                            disabled={!renameMachineInput.trim() || renameMachineInput.trim() === renameMachineFrom.trim()}
+                            onClick={() => void handleRenameMachine()}
                         />
                     </div>
                 </div>

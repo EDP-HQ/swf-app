@@ -147,6 +147,50 @@ export async function insertCmMachine(
     if (!res.ok) throw new Error(parseErrorMessage(body, res.status));
 }
 
+export async function renameCmMachine(
+    input: {
+        processCd: ProcessCd;
+        lineCd?: StrandLineCd | null;
+        oldMachineName: string;
+        newMachineName: string;
+        company?: string;
+        factory?: string;
+    },
+    target = getRollerDbTarget()
+): Promise<void> {
+    const url = resolveMachinesUrl(target, '/rename');
+    let res: Response;
+    try {
+        res = await fetch(url, {
+            method: 'POST',
+            cache: 'no-store',
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                params: {
+                    Company: input.company ?? 'KSB',
+                    Factory: input.factory ?? 'F002',
+                    ProcessCd: input.processCd,
+                    LineCd: input.lineCd ?? null,
+                    OldMachineNm: input.oldMachineName.trim(),
+                    NewMachineNm: input.newMachineName.trim()
+                }
+            })
+        });
+    } catch (e) {
+        const detail = e instanceof Error ? e.message : 'Network error';
+        throw new Error(`Cannot reach machines API (${detail})`);
+    }
+
+    let body: unknown = null;
+    try {
+        body = await res.json();
+    } catch {
+        body = null;
+    }
+
+    if (!res.ok) throw new Error(parseErrorMessage(body, res.status));
+}
+
 export async function setCmMachineVisible(
     input: {
         processCd: ProcessCd;
