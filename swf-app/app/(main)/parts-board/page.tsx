@@ -66,9 +66,11 @@ import {
 import {
     applySavedOrder,
     clampCardSize,
+    clearBoardLayout,
     loadBoardLayout,
-    moveName,
+    placeRelative,
     saveBoardLayout,
+    type BoardLayout,
     type CardSize
 } from '@/lib/roller-monitoring/boardLayout';
 import { fetchCmMachines, insertCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
@@ -330,6 +332,7 @@ function MachineFullscreenView({
     syncEpochMs,
     nowMs,
     highlightRollerKey,
+    showRollers = true,
     onOpenComponentDetail,
     onOpenRollerDetail
 }: {
@@ -337,18 +340,21 @@ function MachineFullscreenView({
     syncEpochMs: number;
     nowMs: number;
     highlightRollerKey: string | null;
+    showRollers?: boolean;
     onOpenComponentDetail: (partKey: MachineFixedPartKey | null, part: FixedPartRow) => void;
     onOpenRollerDetail: (roller: RollerRow) => void;
 }) {
-    const standardRows: { key: MachineFixedPartKey; part: FixedPartRow }[] = [
-        { key: 'gearbox', part: machine.gearbox },
-        { key: 'skipperFront', part: machine.skipperFront },
-        { key: 'skipperBack', part: machine.skipperBack }
-    ];
+    const standardRows: { key: MachineFixedPartKey; part: FixedPartRow }[] = (
+        [
+            { key: 'gearbox', part: machine.gearbox },
+            { key: 'skipperFront', part: machine.skipperFront },
+            { key: 'skipperBack', part: machine.skipperBack }
+        ] as { key: MachineFixedPartKey; part: FixedPartRow }[]
+    ).filter((row) => !!row.part.partId);
+    const extraRows = machine.extraParts.filter((part) => !!part.partId);
+    const componentCount = standardRows.length + extraRows.length;
     const componentSubtitle =
-        machine.extraParts.length > 0
-            ? `Gearbox · SF · SB · +${machine.extraParts.length} more`
-            : 'Gearbox · Skipper SF · Skipper SB';
+        componentCount === 0 ? 'No components added yet' : `${componentCount} registered`;
 
     return (
         <div className="pb-fs-body">
@@ -386,6 +392,13 @@ function MachineFullscreenView({
                             </tr>
                         </thead>
                         <tbody>
+                            {componentCount === 0 ? (
+                                <tr>
+                                    <td colSpan={10} className="pb-fs-col text-color-secondary">
+                                        No components added yet.
+                                    </td>
+                                </tr>
+                            ) : null}
                             {standardRows.map(({ key, part }) => {
                                 const rt = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
                                 const pct = usagePct(rt, part.limitHours);
@@ -422,7 +435,7 @@ function MachineFullscreenView({
                                     </tr>
                                 );
                             })}
-                            {machine.extraParts.map((part) => {
+                            {extraRows.map((part) => {
                                 const rowKey = part.partId || part.displayName;
                                 const rt = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
                                 const pct = usagePct(rt, part.limitHours);
@@ -464,6 +477,7 @@ function MachineFullscreenView({
                 </div>
             </div>
 
+            {showRollers ? (
             <div className="pb-fs-block pb-fs-block--grow">
                 <div className="pb-fs-section pb-fs-section--rollers">
                     <span>Rollers</span>
@@ -538,6 +552,7 @@ function MachineFullscreenView({
                     </table>
                 </div>
             </div>
+            ) : null}
         </div>
     );
 }
@@ -621,6 +636,7 @@ function MachineCard({
     size,
     dragging = false,
     dropTarget = false,
+    dropWhere = null,
     onOpenFullscreen,
     onOpenRoller,
     onOpenFixed,
@@ -640,14 +656,15 @@ function MachineCard({
     size?: CardSize | null;
     dragging?: boolean;
     dropTarget?: boolean;
+    dropWhere?: 'before' | 'after' | null;
     onOpenFullscreen: () => void;
     onOpenRoller: (live: LiveRoller) => void;
     onOpenFixed: (partKey: MachineFixedPartKey, part: FixedPartRow) => void;
     onOpenCustom: (part: FixedPartRow) => void;
     onHideMachine?: () => void;
     onDragStartName?: (name: string) => void;
-    onDragOverName?: (name: string) => void;
-    onDropName?: (name: string) => void;
+    onDragOverName?: (name: string, where: 'before' | 'after') => void;
+    onDropName?: (name: string, where: 'before' | 'after') => void;
     onDragEnd?: () => void;
     onResize?: (size: CardSize, persist?: boolean) => void;
 }) {
@@ -700,7 +717,7 @@ function MachineCard({
     return (
         <article
             ref={cardRef}
-            className={`pb-machine pb-machine--${cardTone}${dragging ? ' pb-machine--dragging' : ''}${dropTarget ? ' pb-machine--drop' : ''}${size ? ' pb-machine--sized' : ''}`}
+            className={`pb-machine pb-machine--${cardTone}${dragging ? ' pb-machine--dragging' : ''}${dropTarget ? ` pb-machine--drop pb-machine--drop-${dropWhere || 'after'}` : ''}${size ? ' pb-machine--sized' : ''}`}
             style={
                 size
                     ? { width: size.w, flexBasis: size.w, minHeight: size.h, height: size.h }
@@ -710,11 +727,15 @@ function MachineCard({
                 if (!onDragOverName) return;
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
-                onDragOverName(machine.name);
+                const rect = e.currentTarget.getBoundingClientRect();
+                const where: 'before' | 'after' = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                onDragOverName(machine.name, where);
             }}
             onDrop={(e) => {
                 e.preventDefault();
-                onDropName?.(machine.name);
+                const rect = e.currentTarget.getBoundingClientRect();
+                const where: 'before' | 'after' = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                onDropName?.(machine.name, where);
             }}
             onDragEnd={() => onDragEnd?.()}
         >
@@ -927,8 +948,14 @@ export default function PartsBoardPage() {
     const [attentionExpanded, setAttentionExpanded] = useState(false);
     const [layoutOrder, setLayoutOrder] = useState<string[]>([]);
     const [cardSizes, setCardSizes] = useState<Record<string, CardSize>>({});
+    const [savedLayout, setSavedLayout] = useState<BoardLayout>({ order: [], sizes: {} });
+    const [layoutDirty, setLayoutDirty] = useState(false);
     const [dragName, setDragName] = useState<string | null>(null);
     const [dropName, setDropName] = useState<string | null>(null);
+    const [dropWhere, setDropWhere] = useState<'before' | 'after' | null>(null);
+    const [confirmRemove, setConfirmRemove] = useState<
+        null | { kind: 'machine'; name: string } | { kind: 'component' }
+    >(null);
     const machinesRef = useRef<MachineDashboard[]>([]);
     const syncEpochMsRef = useRef(Date.now());
     const processCdRef = useRef<ProcessCd>('STRANDING');
@@ -1108,10 +1135,14 @@ export default function PartsBoardPage() {
         processCdRef.current = processCd;
         strandLineCdRef.current = strandLineCd;
         const saved = loadBoardLayout(processCd, processCd === 'STRANDING' ? strandLineCd : null);
+        setSavedLayout(saved);
         setLayoutOrder(saved.order);
         setCardSizes(saved.sizes);
+        setLayoutDirty(false);
         setDragName(null);
         setDropName(null);
+        setDropWhere(null);
+        setConfirmRemove(null);
         setMachines([]);
         setFullscreenMachineName(null);
         setSelectedPart(null);
@@ -1566,12 +1597,6 @@ export default function PartsBoardPage() {
             (selectedPart.kind === 'fixed' && selectedPart.partKey === 'gearbox') ||
             selectedPart.part.partType?.toUpperCase() === 'GEARBOX';
 
-        const detail = isGearbox && buncherBoard
-            ? `Remove gearbox from ${selectedPart.machine.name}? The unit returns to SPARE.`
-            : `Remove ${selectedPart.part.displayName} from ${selectedPart.machine.name}?`;
-
-        if (typeof window !== 'undefined' && !window.confirm(detail)) return;
-
         setSaving(true);
         try {
             await removeComponent(selectedPart.machine.name, dbTarget, {
@@ -1600,27 +1625,47 @@ export default function PartsBoardPage() {
 
     const persistLayout = useCallback(
         (order: string[], sizes: Record<string, CardSize>) => {
-            saveBoardLayout(processCd, layoutLineCd, { order, sizes });
+            const layout = { order, sizes };
+            saveBoardLayout(processCd, layoutLineCd, layout);
+            setSavedLayout(layout);
+            setLayoutDirty(false);
         },
         [processCd, layoutLineCd]
     );
 
-    const handleCardReorder = (fromName: string, toName: string) => {
+    const handleCardReorder = (fromName: string, toName: string, where: 'before' | 'after' = 'after') => {
         const healthSorted = [...machines]
             .sort((a, b) => machineSortScore(b) - machineSortScore(a) || a.name.localeCompare(b.name))
             .map((m) => m.name);
         const current = applySavedOrder(healthSorted, layoutOrder);
-        const next = moveName(current, fromName, toName);
+        const next = placeRelative(current, fromName, toName, where);
         setLayoutOrder(next);
-        persistLayout(next, cardSizes);
+        setLayoutDirty(true);
     };
 
-    const handleCardResize = (machineName: string, size: CardSize, persist = true) => {
-        setCardSizes((prev) => {
-            const next = { ...prev, [machineName]: size };
-            if (persist) persistLayout(layoutOrder, next);
-            return next;
-        });
+    const handleCardResize = (machineName: string, size: CardSize) => {
+        setCardSizes((prev) => ({ ...prev, [machineName]: size }));
+        setLayoutDirty(true);
+    };
+
+    const saveLayoutChanges = () => {
+        persistLayout(layoutOrder, cardSizes);
+        toast.current?.show({ severity: 'success', summary: 'Layout saved', life: 2500 });
+    };
+
+    const discardLayoutChanges = () => {
+        setLayoutOrder(savedLayout.order);
+        setCardSizes(savedLayout.sizes);
+        setLayoutDirty(false);
+    };
+
+    const resetLayoutDefault = () => {
+        clearBoardLayout(processCd, layoutLineCd);
+        setSavedLayout({ order: [], sizes: {} });
+        setLayoutOrder([]);
+        setCardSizes({});
+        setLayoutDirty(false);
+        toast.current?.show({ severity: 'success', summary: 'Layout reset to default', life: 2500 });
     };
 
     const searchLower = search.trim().toLowerCase();
@@ -2255,6 +2300,22 @@ export default function PartsBoardPage() {
                 </aside>
             </div>
 
+            {layoutDirty ? (
+                <div className="pb-layout-bar">
+                    <span className="pb-layout-bar__text">Layout changed — save, discard, or return to default.</span>
+                    <Button label="Save" icon="pi pi-save" size="small" onClick={saveLayoutChanges} />
+                    <Button label="Discard" icon="pi pi-undo" size="small" outlined onClick={discardLayoutChanges} />
+                    <Button
+                        label="Return to default"
+                        icon="pi pi-refresh"
+                        size="small"
+                        severity="secondary"
+                        outlined
+                        onClick={resetLayoutDefault}
+                    />
+                </div>
+            ) : null}
+
             {error && !loading && <Message severity="error" text={error} className="pb-error" />}
 
             {loading ? (
@@ -2282,30 +2343,29 @@ export default function PartsBoardPage() {
                             size={cardSizes[machine.name] ?? null}
                             dragging={dragName === machine.name}
                             dropTarget={dropName === machine.name && dragName !== machine.name}
+                            dropWhere={dropName === machine.name ? dropWhere : null}
                             onDragStartName={(name) => {
                                 setDragName(name);
                                 setDropName(name);
+                                setDropWhere('after');
                             }}
-                            onDragOverName={(name) => setDropName(name)}
-                            onDropName={(name) => {
-                                if (dragName) handleCardReorder(dragName, name);
+                            onDragOverName={(name, where) => {
+                                setDropName(name);
+                                setDropWhere(where);
+                            }}
+                            onDropName={(name, where) => {
+                                if (dragName) handleCardReorder(dragName, name, where);
                                 setDragName(null);
                                 setDropName(null);
+                                setDropWhere(null);
                             }}
                             onDragEnd={() => {
                                 setDragName(null);
                                 setDropName(null);
+                                setDropWhere(null);
                             }}
-                            onResize={(size, persist) => handleCardResize(machine.name, size, persist !== false)}
-                            onHideMachine={() => {
-                                if (
-                                    typeof window !== 'undefined' &&
-                                    !window.confirm(`Remove ${machine.name} from this process?`)
-                                ) {
-                                    return;
-                                }
-                                void handleHideMachine(machine.name);
-                            }}
+                            onResize={(size) => handleCardResize(machine.name, size)}
+                            onHideMachine={() => setConfirmRemove({ kind: 'machine', name: machine.name })}
                         />
                     ))}
                 </div>
@@ -2351,12 +2411,17 @@ export default function PartsBoardPage() {
                             syncEpochMs={syncEpochMs}
                             nowMs={nowMs}
                             highlightRollerKey={highlightRollerKey}
+                            showRollers={buncherBoard}
                             onOpenComponentDetail={(key, part) => openComponentDetail(fullscreenMachine, key, part)}
                             onOpenRollerDetail={(roller) => openRollerEdit(fullscreenMachine, roller)}
                         />
                         <div className="pb-fs-footer">
-                            {3 + fullscreenMachine.extraParts.length} components + {fullscreenMachine.rollers.length}{' '}
-                            rollers
+                            {(fullscreenMachine.gearbox.partId ? 1 : 0) +
+                                (fullscreenMachine.skipperFront.partId ? 1 : 0) +
+                                (fullscreenMachine.skipperBack.partId ? 1 : 0) +
+                                fullscreenMachine.extraParts.filter((p) => !!p.partId).length}{' '}
+                            components
+                            {buncherBoard ? ` + ${fullscreenMachine.rollers.length} rollers` : ''}
                         </div>
                     </div>
                 ) : null}
@@ -2618,7 +2683,7 @@ export default function PartsBoardPage() {
                                 label="Remove"
                                 severity="danger"
                                 loading={saving}
-                                onClick={() => void handleRemoveComponent()}
+                                onClick={() => setConfirmRemove({ kind: 'component' })}
                                 disabled={!selectedPart.part.partId}
                             />
                         </div>
@@ -2650,6 +2715,45 @@ export default function PartsBoardPage() {
                         </div>
                     </>
                 ) : null}
+            </Dialog>
+
+            <Dialog
+                className="pb-add-dialog"
+                header="Confirm remove"
+                visible={confirmRemove !== null}
+                style={{ width: 'min(92vw, 26rem)' }}
+                onHide={() => setConfirmRemove(null)}
+                dismissableMask
+            >
+                <p className="m-0 mb-3">
+                    {confirmRemove?.kind === 'machine'
+                        ? `Remove ${confirmRemove.name} from this process? It can be restored from Removed machines.`
+                        : confirmRemove?.kind === 'component' && selectedPart && selectedPart.kind !== 'roller'
+                          ? selectedPart.part.partType?.toUpperCase() === 'GEARBOX' && buncherBoard
+                              ? `Remove gearbox from ${selectedPart.machine.name}? The unit returns to SPARE.`
+                              : `Remove ${selectedPart.part.displayName} from ${selectedPart.machine.name}?`
+                          : 'Remove this item?'}
+                </p>
+                <p className="text-color-secondary text-sm mt-0 mb-3">This does not delete history from the database.</p>
+                <div className="flex justify-content-end gap-2">
+                    <Button label="Cancel" text onClick={() => setConfirmRemove(null)} disabled={saving || hideMachineSaving} />
+                    <Button
+                        label="Remove"
+                        icon="pi pi-trash"
+                        severity="danger"
+                        loading={saving || hideMachineSaving}
+                        onClick={() => {
+                            if (confirmRemove?.kind === 'machine') {
+                                const name = confirmRemove.name;
+                                setConfirmRemove(null);
+                                void handleHideMachine(name);
+                                return;
+                            }
+                            setConfirmRemove(null);
+                            void handleRemoveComponent();
+                        }}
+                    />
+                </div>
             </Dialog>
 
             <Dialog

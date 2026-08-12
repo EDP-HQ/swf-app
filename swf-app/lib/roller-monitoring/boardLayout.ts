@@ -58,6 +58,29 @@ export function saveBoardLayout(
     }
 }
 
+export function clearBoardLayout(processCd: ProcessCd, lineCd: StrandLineCd | null): void {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.removeItem(storageKey(processCd, lineCd));
+    } catch {
+        /* ignore */
+    }
+}
+
+export function layoutsEqual(a: BoardLayout, b: BoardLayout): boolean {
+    if (a.order.length !== b.order.length) return false;
+    if (a.order.some((n, i) => n !== b.order[i])) return false;
+    const aKeys = Object.keys(a.sizes);
+    const bKeys = Object.keys(b.sizes);
+    if (aKeys.length !== bKeys.length) return false;
+    for (const key of aKeys) {
+        const as = a.sizes[key];
+        const bs = b.sizes[key];
+        if (!as || !bs || as.w !== bs.w || as.h !== bs.h) return false;
+    }
+    return true;
+}
+
 export function applySavedOrder(names: string[], saved: string[]): string[] {
     if (saved.length === 0) return names;
     const set = new Set(names);
@@ -67,12 +90,20 @@ export function applySavedOrder(names: string[], saved: string[]): string[] {
 }
 
 export function moveName(order: string[], fromName: string, toName: string): string[] {
-    if (fromName === toName) return order;
-    const from = order.indexOf(fromName);
-    const to = order.indexOf(toName);
-    if (from < 0 || to < 0) return order;
-    const next = [...order];
-    next.splice(from, 1);
-    next.splice(to, 0, fromName);
-    return next;
+    return placeRelative(order, fromName, toName, 'before');
+}
+
+/** Stack after `anchorName` (below in a column wrap). */
+export function placeRelative(
+    order: string[],
+    fromName: string,
+    anchorName: string,
+    where: 'before' | 'after'
+): string[] {
+    if (fromName === anchorName) return order;
+    const without = order.filter((n) => n !== fromName);
+    const i = without.indexOf(anchorName);
+    if (i < 0) return order;
+    without.splice(where === 'after' ? i + 1 : i, 0, fromName);
+    return without;
 }

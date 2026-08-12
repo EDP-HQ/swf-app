@@ -77,18 +77,19 @@
     flex: 1;
     min-height: 0;
     display: flex;
-    flex-direction: row;
-    align-items: stretch;
+    flex-direction: column;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    align-items: flex-start;
     gap: 0.65rem;
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: auto;
     padding-bottom: 0.35rem;
-    scroll-snap-type: x proximity;
 }
 
 .pb-machine {
     position: relative;
-    flex: 0 0 var(--pb-card-width);
+    flex: 0 0 auto;
     width: var(--pb-card-width);
     border: 1px solid var(--surface-border);
     border-radius: calc(10px * var(--pb-scale));
@@ -98,7 +99,6 @@
     display: flex;
     flex-direction: column;
     min-height: var(--pb-card-min-height);
-    scroll-snap-align: start;
 }
 
 .pb-machine:hover {
@@ -118,6 +118,38 @@
 .pb-machine--drop {
     border-color: var(--primary-color);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 35%, transparent);
+}
+.pb-machine--drop-before::before,
+.pb-machine--drop-after::after {
+    content: '';
+    position: absolute;
+    left: 0.4rem;
+    right: 0.4rem;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--primary-color);
+    z-index: 3;
+    pointer-events: none;
+}
+.pb-machine--drop-before::before { top: 0.2rem; }
+.pb-machine--drop-after::after { bottom: 0.2rem; }
+
+.pb-layout-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    padding: 0.45rem 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--primary-color) 35%, var(--surface-border));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--primary-color) 8%, var(--surface-0));
+    flex-shrink: 0;
+}
+
+.pb-layout-bar__text {
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-right: auto;
 }
 .pb-machine--sized .pb-machine__body {
     overflow: auto;
