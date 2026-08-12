@@ -73,8 +73,8 @@ function preserveFixedPart(
         return withFixedPartStats(incoming, incoming.runtimeHours, incoming.limitHours);
     }
 
-    // Machine still RUN: keep live tick. Never jump back to a stale DB value
-    // (RUNTIME_SEC is only checkpointed on poll / stop).
+    // Machine still RUN: smooth UI between polls. Prefer the higher of DB
+    // (swf-api worker) vs local tick so tab switches / refresh stay accurate.
     if (machineStillRunning) {
         const limitHours = incoming.limitHours || old.limitHours;
         const liveHours = old.runtimeHours + Math.max(0, elapsedHours);

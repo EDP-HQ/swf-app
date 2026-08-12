@@ -20,8 +20,6 @@ import { CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS, GEARBOX_DEFAULT_LIMIT_HOURS, ROLL
 import { formatReplaceDt, formatRuntimeHms } from '@/lib/roller-monitoring/formatRuntime';
 import { RuntimeTimer } from '@/lib/roller-monitoring/RuntimeTimer';
 import {
-    allComponentLiveSnapshots,
-    applySavedAllComponentRuntime,
     liveFixedPartRuntimeHours,
     liveFixedPartStatus,
     MACHINE_FIXED_PART_KEYS
@@ -60,7 +58,6 @@ import {
     insertComponent,
     removeComponent,
     replaceComponent,
-    updateComponentRuntime,
     updateComponentRuntimeLimit,
     type ComponentHistoryRow
 } from '@/lib/roller-monitoring/componentsClient';
@@ -1076,7 +1073,6 @@ export default function PartsBoardPage() {
             const prev = machinesRef.current;
             const syncMs = syncEpochMsRef.current;
             const saveNowMs = Date.now();
-            const savedSecByPartId = new Map<string, number>();
             const savedRollerSecByBin = new Map<string, number>();
             const saveTasks: Promise<void>[] = [];
 
@@ -1084,6 +1080,7 @@ export default function PartsBoardPage() {
                 const oldM = prev.find((p) => p.name === newM.name);
                 if (!oldM) continue;
 
+                // Rollers only — component RUNTIME_SEC is owned by swf-api componentRuntimeWorker.
                 if (useBuncher) {
                     for (const snap of rollersStoppedTicking(oldM, newM, syncMs, saveNowMs)) {
                         if (!snap.roller.rollerId && !snap.roller.binLocation) continue;
@@ -1095,23 +1092,6 @@ export default function PartsBoardPage() {
                             })
                         );
                     }
-                }
-
-                // Persist install time on Run→Stop and also while still RUN (checkpoint).
-                // Otherwise a refresh reloads last-stop RUNTIME_SEC from DB.
-                if (!oldM.running) continue;
-
-                for (const snap of allComponentLiveSnapshots(oldM, syncMs, saveNowMs)) {
-                    if (!snap.part.partId) continue;
-                    savedSecByPartId.set(snap.part.partId, snap.runtimeSec);
-                    saveTasks.push(
-                        updateComponentRuntime(snap.runtimeSec, target, {
-                            partId: snap.part.partId,
-                            ...(snap.partKey
-                                ? { machineName: oldM.name, partKey: snap.partKey }
-                                : {})
-                        })
-                    );
                 }
             }
 
@@ -1133,10 +1113,6 @@ export default function PartsBoardPage() {
             }
 
             incoming = applyComponentsToMachines(incoming, components);
-
-            if (savedSecByPartId.size > 0) {
-                incoming = incoming.map((m) => applySavedAllComponentRuntime(m, savedSecByPartId));
-            }
 
             if (gen !== loadGenRef.current) return;
             if (
