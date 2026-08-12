@@ -2,8 +2,8 @@ import type { ProcessCd, StrandLineCd } from './processCatalog';
 
 export type CardSize = { w: number; h: number };
 
-/** left/right = new column beside; above/below = stack in the same column. */
-export type DropWhere = 'left' | 'right' | 'above' | 'below';
+/** swap = exchange places; below/above = stack in the same column. */
+export type DropWhere = 'left' | 'right' | 'above' | 'below' | 'swap';
 
 export type BoardLayout = {
     /** Vertical stacks sitting side by side. One machine per column = original row. */
@@ -124,6 +124,32 @@ export function normalizeColumns(names: string[], columns: string[][]): string[]
     return next;
 }
 
+export function swapInColumns(columns: string[][], a: string, b: string): string[][] {
+    if (a === b) return columns;
+    const next = columns.map((col) => [...col]);
+    let ai = -1;
+    let aj = -1;
+    let bi = -1;
+    let bj = -1;
+    for (let i = 0; i < next.length; i += 1) {
+        for (let j = 0; j < next[i].length; j += 1) {
+            if (next[i][j] === a) {
+                ai = i;
+                aj = j;
+            }
+            if (next[i][j] === b) {
+                bi = i;
+                bj = j;
+            }
+        }
+    }
+    if (ai < 0 || bi < 0) return columns;
+    const tmp = next[ai][aj];
+    next[ai][aj] = next[bi][bj];
+    next[bi][bj] = tmp;
+    return next;
+}
+
 export function moveInColumns(
     columns: string[][],
     fromName: string,
@@ -131,21 +157,18 @@ export function moveInColumns(
     where: DropWhere
 ): string[][] {
     if (fromName === anchorName) return columns;
+    if (where === 'swap' || where === 'left' || where === 'right') {
+        return swapInColumns(columns, fromName, anchorName);
+    }
+
     const cleaned = columns.map((col) => col.filter((n) => n !== fromName)).filter((col) => col.length > 0);
     const ci = cleaned.findIndex((col) => col.includes(anchorName));
     if (ci < 0) return columns;
     const ri = cleaned[ci].indexOf(anchorName);
-
-    if (where === 'below' || where === 'above') {
-        const col = [...cleaned[ci]];
-        col.splice(where === 'below' ? ri + 1 : ri, 0, fromName);
-        const next = [...cleaned];
-        next[ci] = col;
-        return next;
-    }
-
+    const col = [...cleaned[ci]];
+    col.splice(where === 'below' ? ri + 1 : ri, 0, fromName);
     const next = [...cleaned];
-    next.splice(where === 'right' ? ci + 1 : ci, 0, [fromName]);
+    next[ci] = col;
     return next;
 }
 

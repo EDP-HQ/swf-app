@@ -66,7 +66,6 @@ import {
 import {
     clampCardSize,
     clearBoardLayout,
-    dropZoneFromPoint,
     emptyBoardLayout,
     loadBoardLayout,
     moveInColumns,
@@ -727,7 +726,7 @@ function MachineCard({
         <article
             ref={cardRef}
             data-machine-card={machine.name}
-            className={`pb-machine pb-machine--${cardTone}${dragging ? ' pb-machine--dragging' : ''}${dropTarget && dropWhere !== 'below' ? ` pb-machine--drop pb-machine--drop-${dropWhere || 'right'}` : ''}${size ? ' pb-machine--sized' : ''}`}
+            className={`pb-machine pb-machine--${cardTone}${dragging ? ' pb-machine--dragging' : ''}${dropTarget && dropWhere === 'swap' ? ' pb-machine--drop pb-machine--drop-swap' : ''}${size ? ' pb-machine--sized' : ''}`}
             style={
                 size
                     ? { width: size.w, flexBasis: size.w, minHeight: size.h, height: size.h }
@@ -1659,9 +1658,7 @@ export default function PartsBoardPage() {
             .elementFromPoint(clientX, clientY)
             ?.closest('[data-machine-card]') as HTMLElement | null;
         if (card?.dataset.machineCard && card.dataset.machineCard !== dragging) {
-            const rect = card.getBoundingClientRect();
-            const zone = dropZoneFromPoint(rect, clientX, clientY);
-            return { name: card.dataset.machineCard, where: zone === 'below' ? 'right' : zone };
+            return { name: card.dataset.machineCard, where: 'swap' as const };
         }
         return null;
     };
