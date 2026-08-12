@@ -64,14 +64,17 @@ import {
     type ComponentHistoryRow
 } from '@/lib/roller-monitoring/componentsClient';
 import {
-    applySavedOrder,
     clampCardSize,
     clearBoardLayout,
+    dropZoneFromPoint,
+    emptyBoardLayout,
     loadBoardLayout,
-    placeRelative,
+    moveInColumns,
+    normalizeColumns,
     saveBoardLayout,
     type BoardLayout,
-    type CardSize
+    type CardSize,
+    type DropWhere
 } from '@/lib/roller-monitoring/boardLayout';
 import { fetchCmMachines, insertCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
 import {
@@ -656,15 +659,15 @@ function MachineCard({
     size?: CardSize | null;
     dragging?: boolean;
     dropTarget?: boolean;
-    dropWhere?: 'before' | 'after' | null;
+    dropWhere?: DropWhere | null;
     onOpenFullscreen: () => void;
     onOpenRoller: (live: LiveRoller) => void;
     onOpenFixed: (partKey: MachineFixedPartKey, part: FixedPartRow) => void;
     onOpenCustom: (part: FixedPartRow) => void;
     onHideMachine?: () => void;
     onDragStartName?: (name: string) => void;
-    onDragOverName?: (name: string, where: 'before' | 'after') => void;
-    onDropName?: (name: string, where: 'before' | 'after') => void;
+    onDragOverName?: (name: string, where: DropWhere) => void;
+    onDropName?: (name: string, where: DropWhere) => void;
     onDragEnd?: () => void;
     onResize?: (size: CardSize, persist?: boolean) => void;
 }) {
@@ -717,7 +720,7 @@ function MachineCard({
     return (
         <article
             ref={cardRef}
-            className={`pb-machine pb-machine--${cardTone}${dragging ? ' pb-machine--dragging' : ''}${dropTarget ? ` pb-machine--drop pb-machine--drop-${dropWhere || 'after'}` : ''}${size ? ' pb-machine--sized' : ''}`}
+            className={`pb-machine pb-machine--${cardTone}${dragging ? ' pb-machine--dragging' : ''}${dropTarget ? ` pb-machine--drop pb-machine--drop-${dropWhere || 'below'}` : ''}${size ? ' pb-machine--sized' : ''}`}
             style={
                 size
                     ? { width: size.w, flexBasis: size.w, minHeight: size.h, height: size.h }
@@ -728,14 +731,12 @@ function MachineCard({
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
                 const rect = e.currentTarget.getBoundingClientRect();
-                const where: 'before' | 'after' = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-                onDragOverName(machine.name, where);
+                onDragOverName(machine.name, dropZoneFromPoint(rect, e.clientX, e.clientY));
             }}
             onDrop={(e) => {
                 e.preventDefault();
                 const rect = e.currentTarget.getBoundingClientRect();
-                const where: 'before' | 'after' = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-                onDropName?.(machine.name, where);
+                onDropName?.(machine.name, dropZoneFromPoint(rect, e.clientX, e.clientY));
             }}
             onDragEnd={() => onDragEnd?.()}
         >
@@ -946,13 +947,13 @@ export default function PartsBoardPage() {
     const [spareGearboxId, setSpareGearboxId] = useState<string | null>(null);
     const [gearboxPoolLoading, setGearboxPoolLoading] = useState(false);
     const [attentionExpanded, setAttentionExpanded] = useState(false);
-    const [layoutOrder, setLayoutOrder] = useState<string[]>([]);
+    const [layoutColumns, setLayoutColumns] = useState<string[][]>([]);
     const [cardSizes, setCardSizes] = useState<Record<string, CardSize>>({});
-    const [savedLayout, setSavedLayout] = useState<BoardLayout>({ order: [], sizes: {} });
+    const [savedLayout, setSavedLayout] = useState<BoardLayout>(emptyBoardLayout());
     const [layoutDirty, setLayoutDirty] = useState(false);
     const [dragName, setDragName] = useState<string | null>(null);
     const [dropName, setDropName] = useState<string | null>(null);
-    const [dropWhere, setDropWhere] = useState<'before' | 'after' | null>(null);
+    const [dropWhere, setDropWhere] = useState<DropWhere | null>(null);
     const [confirmRemove, setConfirmRemove] = useState<
         null | { kind: 'machine'; name: string } | { kind: 'component' }
     >(null);
@@ -1136,7 +1137,7 @@ export default function PartsBoardPage() {
         strandLineCdRef.current = strandLineCd;
         const saved = loadBoardLayout(processCd, processCd === 'STRANDING' ? strandLineCd : null);
         setSavedLayout(saved);
-        setLayoutOrder(saved.order);
+        setLayoutColumns(saved.columns);
         setCardSizes(saved.sizes);
         setLayoutDirty(false);
         setDragName(null);
@@ -1624,8 +1625,8 @@ export default function PartsBoardPage() {
     };
 
     const persistLayout = useCallback(
-        (order: string[], sizes: Record<string, CardSize>) => {
-            const layout = { order, sizes };
+        (columns: string[][], sizes: Record<string, CardSize>) => {
+            const layout: BoardLayout = { columns, order: columns.flat(), sizes };
             saveBoardLayout(processCd, layoutLineCd, layout);
             setSavedLayout(layout);
             setLayoutDirty(false);
@@ -1633,13 +1634,12 @@ export default function PartsBoardPage() {
         [processCd, layoutLineCd]
     );
 
-    const handleCardReorder = (fromName: string, toName: string, where: 'before' | 'after' = 'after') => {
+    const handleCardReorder = (fromName: string, toName: string, where: DropWhere = 'below') => {
         const healthSorted = [...machines]
             .sort((a, b) => machineSortScore(b) - machineSortScore(a) || a.name.localeCompare(b.name))
             .map((m) => m.name);
-        const current = applySavedOrder(healthSorted, layoutOrder);
-        const next = placeRelative(current, fromName, toName, where);
-        setLayoutOrder(next);
+        const current = normalizeColumns(healthSorted, layoutColumns);
+        setLayoutColumns(moveInColumns(current, fromName, toName, where));
         setLayoutDirty(true);
     };
 
@@ -1649,20 +1649,20 @@ export default function PartsBoardPage() {
     };
 
     const saveLayoutChanges = () => {
-        persistLayout(layoutOrder, cardSizes);
+        persistLayout(layoutColumns, cardSizes);
         toast.current?.show({ severity: 'success', summary: 'Layout saved', life: 2500 });
     };
 
     const discardLayoutChanges = () => {
-        setLayoutOrder(savedLayout.order);
+        setLayoutColumns(savedLayout.columns);
         setCardSizes(savedLayout.sizes);
         setLayoutDirty(false);
     };
 
     const resetLayoutDefault = () => {
         clearBoardLayout(processCd, layoutLineCd);
-        setSavedLayout({ order: [], sizes: {} });
-        setLayoutOrder([]);
+        setSavedLayout(emptyBoardLayout());
+        setLayoutColumns([]);
         setCardSizes({});
         setLayoutDirty(false);
         toast.current?.show({ severity: 'success', summary: 'Layout reset to default', life: 2500 });
@@ -1674,20 +1674,37 @@ export default function PartsBoardPage() {
         const healthSorted = [...machines].sort(
             (a, b) => machineSortScore(b) - machineSortScore(a) || a.name.localeCompare(b.name)
         );
-        const names = applySavedOrder(
+        const cols = normalizeColumns(
             healthSorted.map((m) => m.name),
-            layoutOrder
+            layoutColumns
         );
         const byName = new Map(machines.map((m) => [m.name, m]));
-        return names.map((n) => byName.get(n)).filter((m): m is MachineDashboard => !!m);
-    }, [machines, layoutOrder]);
+        return cols
+            .flat()
+            .map((n) => byName.get(n))
+            .filter((m): m is MachineDashboard => !!m);
+    }, [machines, layoutColumns]);
 
-    const visibleMachines = useMemo(() => {
-        return sortedMachines.filter((machine) => {
-            if (!searchLower) return true;
-            return machine.name.toLowerCase().includes(searchLower);
-        });
-    }, [sortedMachines, searchLower]);
+    const visibleColumns = useMemo(() => {
+        const healthSorted = [...machines].sort(
+            (a, b) => machineSortScore(b) - machineSortScore(a) || a.name.localeCompare(b.name)
+        );
+        const cols = normalizeColumns(
+            healthSorted.map((m) => m.name),
+            layoutColumns
+        );
+        const byName = new Map(machines.map((m) => [m.name, m]));
+        return cols
+            .map((col) =>
+                col
+                    .map((n) => byName.get(n))
+                    .filter((m): m is MachineDashboard => !!m)
+                    .filter((m) => !searchLower || m.name.toLowerCase().includes(searchLower))
+            )
+            .filter((col) => col.length > 0);
+    }, [machines, layoutColumns, searchLower]);
+
+    const visibleMachines = useMemo(() => visibleColumns.flat(), [visibleColumns]);
 
     const attentionItems = useMemo(() => {
         const items: AttentionItem[] = [];
@@ -2328,45 +2345,51 @@ export default function PartsBoardPage() {
                 </div>
             ) : (
                 <div className="pb-machine-grid">
-                    {visibleMachines.map((machine) => (
-                        <MachineCard
-                            key={machine.name}
-                            machine={machine}
-                            syncEpochMs={syncEpochMs}
-                            nowMs={nowMs}
-                            search={searchLower}
-                            componentsOnly={!buncherBoard}
-                            onOpenFullscreen={() => openMachine(machine.name)}
-                            onOpenRoller={(lr) => openRollerEdit(machine, lr.roller)}
-                            onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
-                            onOpenCustom={(part) => openCustomEdit(machine, part)}
-                            size={cardSizes[machine.name] ?? null}
-                            dragging={dragName === machine.name}
-                            dropTarget={dropName === machine.name && dragName !== machine.name}
-                            dropWhere={dropName === machine.name ? dropWhere : null}
-                            onDragStartName={(name) => {
-                                setDragName(name);
-                                setDropName(name);
-                                setDropWhere('after');
-                            }}
-                            onDragOverName={(name, where) => {
-                                setDropName(name);
-                                setDropWhere(where);
-                            }}
-                            onDropName={(name, where) => {
-                                if (dragName) handleCardReorder(dragName, name, where);
-                                setDragName(null);
-                                setDropName(null);
-                                setDropWhere(null);
-                            }}
-                            onDragEnd={() => {
-                                setDragName(null);
-                                setDropName(null);
-                                setDropWhere(null);
-                            }}
-                            onResize={(size) => handleCardResize(machine.name, size)}
-                            onHideMachine={() => setConfirmRemove({ kind: 'machine', name: machine.name })}
-                        />
+                    {visibleColumns.map((col) => (
+                        <div key={col.map((m) => m.name).join('|')} className="pb-machine-col">
+                            {col.map((machine) => (
+                                <MachineCard
+                                    key={machine.name}
+                                    machine={machine}
+                                    syncEpochMs={syncEpochMs}
+                                    nowMs={nowMs}
+                                    search={searchLower}
+                                    componentsOnly={!buncherBoard}
+                                    onOpenFullscreen={() => openMachine(machine.name)}
+                                    onOpenRoller={(lr) => openRollerEdit(machine, lr.roller)}
+                                    onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
+                                    onOpenCustom={(part) => openCustomEdit(machine, part)}
+                                    size={cardSizes[machine.name] ?? null}
+                                    dragging={dragName === machine.name}
+                                    dropTarget={dropName === machine.name && dragName !== machine.name}
+                                    dropWhere={dropName === machine.name ? dropWhere : null}
+                                    onDragStartName={(name) => {
+                                        setDragName(name);
+                                        setDropName(name);
+                                        setDropWhere('right');
+                                    }}
+                                    onDragOverName={(name, where) => {
+                                        setDropName(name);
+                                        setDropWhere(where);
+                                    }}
+                                    onDropName={(name, where) => {
+                                        if (dragName) handleCardReorder(dragName, name, where);
+                                        setDragName(null);
+                                        setDropName(null);
+                                        setDropWhere(null);
+                                    }}
+                                    onDragEnd={() => {
+                                        setDragName(null);
+                                        setDropName(null);
+                                        setDropWhere(null);
+                                    }}
+                                    onResize={(size) => handleCardResize(machine.name, size)}
+                                    onHideMachine={() =>
+                                        setConfirmRemove({ kind: 'machine', name: machine.name })
+                                    }
+                                />
+                            ))}
+                        </div>
                     ))}
                 </div>
             )}
