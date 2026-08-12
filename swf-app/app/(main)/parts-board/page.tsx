@@ -57,11 +57,20 @@ import {
     fetchComponents,
     fetchComponentHistory,
     insertComponent,
+    removeComponent,
     replaceComponent,
     updateComponentRuntime,
     updateComponentRuntimeLimit,
     type ComponentHistoryRow
 } from '@/lib/roller-monitoring/componentsClient';
+import {
+    applySavedOrder,
+    clampCardSize,
+    loadBoardLayout,
+    moveName,
+    saveBoardLayout,
+    type CardSize
+} from '@/lib/roller-monitoring/boardLayout';
 import { fetchCmMachines, insertCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
 import {
     fetchGearboxAssets,
@@ -609,23 +618,42 @@ function MachineCard({
     nowMs,
     search,
     componentsOnly = false,
+    size,
+    dragging = false,
+    dropTarget = false,
     onOpenFullscreen,
     onOpenRoller,
     onOpenFixed,
     onOpenCustom,
-    onHideMachine
+    onHideMachine,
+    onDragStartName,
+    onDragOverName,
+    onDropName,
+    onDragEnd,
+    onResize
 }: {
     machine: MachineDashboard;
     syncEpochMs: number;
     nowMs: number;
     search: string;
     componentsOnly?: boolean;
+    size?: CardSize | null;
+    dragging?: boolean;
+    dropTarget?: boolean;
     onOpenFullscreen: () => void;
     onOpenRoller: (live: LiveRoller) => void;
     onOpenFixed: (partKey: MachineFixedPartKey, part: FixedPartRow) => void;
     onOpenCustom: (part: FixedPartRow) => void;
     onHideMachine?: () => void;
+    onDragStartName?: (name: string) => void;
+    onDragOverName?: (name: string) => void;
+    onDropName?: (name: string) => void;
+    onDragEnd?: () => void;
+    onResize?: (size: CardSize, persist?: boolean) => void;
 }) {
+    const cardRef = useRef<HTMLElement | null>(null);
+    const resizeStart = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+
     if (search && !machine.name.toLowerCase().includes(search)) return null;
 
     const liveRollers = componentsOnly
@@ -640,20 +668,83 @@ function MachineCard({
         !!machine.skipperBack.partId ||
         machine.extraParts.length > 0;
 
+    const onResizePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+        if (!onResize || !cardRef.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = cardRef.current.getBoundingClientRect();
+        resizeStart.current = { x: e.clientX, y: e.clientY, w: rect.width, h: rect.height };
+        e.currentTarget.setPointerCapture(e.pointerId);
+    };
+
+    const onResizePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+        if (!onResize || !resizeStart.current) return;
+        const next = clampCardSize({
+            w: resizeStart.current.w + (e.clientX - resizeStart.current.x),
+            h: resizeStart.current.h + (e.clientY - resizeStart.current.y)
+        });
+        if (next) onResize(next, false);
+    };
+
+    const onResizePointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+        if (onResize && resizeStart.current) {
+            const next = clampCardSize({
+                w: resizeStart.current.w + (e.clientX - resizeStart.current.x),
+                h: resizeStart.current.h + (e.clientY - resizeStart.current.y)
+            });
+            if (next) onResize(next, true);
+        }
+        resizeStart.current = null;
+    };
+
     return (
-        <article className={`pb-machine pb-machine--${cardTone}`}>
+        <article
+            ref={cardRef}
+            className={`pb-machine pb-machine--${cardTone}${dragging ? ' pb-machine--dragging' : ''}${dropTarget ? ' pb-machine--drop' : ''}${size ? ' pb-machine--sized' : ''}`}
+            style={
+                size
+                    ? { width: size.w, flexBasis: size.w, minHeight: size.h, height: size.h }
+                    : undefined
+            }
+            onDragOver={(e) => {
+                if (!onDragOverName) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                onDragOverName(machine.name);
+            }}
+            onDrop={(e) => {
+                e.preventDefault();
+                onDropName?.(machine.name);
+            }}
+            onDragEnd={() => onDragEnd?.()}
+        >
             <header className="pb-machine__head">
+                <button
+                    type="button"
+                    className="pb-machine__drag"
+                    draggable
+                    title="Drag to rearrange"
+                    aria-label={`Rearrange ${machine.name}`}
+                    onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', machine.name);
+                        e.dataTransfer.effectAllowed = 'move';
+                        onDragStartName?.(machine.name);
+                    }}
+                    onClick={(e) => e.preventDefault()}
+                >
+                    <i className="pi pi-bars" />
+                </button>
                 <h3 className="pb-machine__name">{machine.name}</h3>
                 <div className="pb-machine__head-actions">
                     {onHideMachine ? (
                         <Button
-                            icon="pi pi-eye-slash"
+                            icon="pi pi-times"
                             rounded
                             text
                             size="small"
                             className="pb-machine__fs-btn"
-                            aria-label="Hide machine"
-                            tooltip="Hide machine in this process"
+                            aria-label="Remove machine"
+                            tooltip="Remove machine from this process"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 onHideMachine();
@@ -760,6 +851,18 @@ function MachineCard({
                     </div>
                 ) : null}
             </div>
+            {onResize ? (
+                <button
+                    type="button"
+                    className="pb-machine__resize"
+                    aria-label="Resize card"
+                    title="Drag to resize"
+                    onPointerDown={onResizePointerDown}
+                    onPointerMove={onResizePointerMove}
+                    onPointerUp={onResizePointerUp}
+                    onPointerCancel={onResizePointerUp}
+                />
+            ) : null}
         </article>
     );
 }
@@ -822,6 +925,10 @@ export default function PartsBoardPage() {
     const [spareGearboxId, setSpareGearboxId] = useState<string | null>(null);
     const [gearboxPoolLoading, setGearboxPoolLoading] = useState(false);
     const [attentionExpanded, setAttentionExpanded] = useState(false);
+    const [layoutOrder, setLayoutOrder] = useState<string[]>([]);
+    const [cardSizes, setCardSizes] = useState<Record<string, CardSize>>({});
+    const [dragName, setDragName] = useState<string | null>(null);
+    const [dropName, setDropName] = useState<string | null>(null);
     const machinesRef = useRef<MachineDashboard[]>([]);
     const syncEpochMsRef = useRef(Date.now());
     const processCdRef = useRef<ProcessCd>('STRANDING');
@@ -830,6 +937,7 @@ export default function PartsBoardPage() {
     const loadGenRef = useRef(0);
 
     const buncherBoard = isBuncherBoard(processCd, strandLineCd);
+    const layoutLineCd = processCd === 'STRANDING' ? strandLineCd : null;
 
     useEffect(() => {
         machinesRef.current = machines;
@@ -999,6 +1107,11 @@ export default function PartsBoardPage() {
     useEffect(() => {
         processCdRef.current = processCd;
         strandLineCdRef.current = strandLineCd;
+        const saved = loadBoardLayout(processCd, processCd === 'STRANDING' ? strandLineCd : null);
+        setLayoutOrder(saved.order);
+        setCardSizes(saved.sizes);
+        setDragName(null);
+        setDropName(null);
         setMachines([]);
         setFullscreenMachineName(null);
         setSelectedPart(null);
@@ -1445,12 +1558,84 @@ export default function PartsBoardPage() {
         }
     };
 
+    const handleRemoveComponent = async () => {
+        if (!selectedPart || selectedPart.kind === 'roller' || !selectedPart.part.partId) return;
+
+        const isGearbox =
+            selectedPart.part.partKind === 'gearbox' ||
+            (selectedPart.kind === 'fixed' && selectedPart.partKey === 'gearbox') ||
+            selectedPart.part.partType?.toUpperCase() === 'GEARBOX';
+
+        const detail = isGearbox && buncherBoard
+            ? `Remove gearbox from ${selectedPart.machine.name}? The unit returns to SPARE.`
+            : `Remove ${selectedPart.part.displayName} from ${selectedPart.machine.name}?`;
+
+        if (typeof window !== 'undefined' && !window.confirm(detail)) return;
+
+        setSaving(true);
+        try {
+            await removeComponent(selectedPart.machine.name, dbTarget, {
+                partId: selectedPart.part.partId,
+                ...(selectedPart.kind === 'fixed' ? { partKey: selectedPart.partKey } : {})
+            });
+            toast.current?.show({
+                severity: 'success',
+                summary: 'Component removed',
+                detail: `${selectedPart.part.displayName} removed from ${selectedPart.machine.name}`,
+                life: 3500
+            });
+            closeEdit();
+            await loadDashboard(true, dbTarget);
+        } catch (e) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Remove failed',
+                detail: e instanceof Error ? e.message : undefined,
+                life: 5000
+            });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const persistLayout = useCallback(
+        (order: string[], sizes: Record<string, CardSize>) => {
+            saveBoardLayout(processCd, layoutLineCd, { order, sizes });
+        },
+        [processCd, layoutLineCd]
+    );
+
+    const handleCardReorder = (fromName: string, toName: string) => {
+        const healthSorted = [...machines]
+            .sort((a, b) => machineSortScore(b) - machineSortScore(a) || a.name.localeCompare(b.name))
+            .map((m) => m.name);
+        const current = applySavedOrder(healthSorted, layoutOrder);
+        const next = moveName(current, fromName, toName);
+        setLayoutOrder(next);
+        persistLayout(next, cardSizes);
+    };
+
+    const handleCardResize = (machineName: string, size: CardSize, persist = true) => {
+        setCardSizes((prev) => {
+            const next = { ...prev, [machineName]: size };
+            if (persist) persistLayout(layoutOrder, next);
+            return next;
+        });
+    };
+
     const searchLower = search.trim().toLowerCase();
 
-    const sortedMachines = useMemo(
-        () => [...machines].sort((a, b) => machineSortScore(b) - machineSortScore(a) || a.name.localeCompare(b.name)),
-        [machines]
-    );
+    const sortedMachines = useMemo(() => {
+        const healthSorted = [...machines].sort(
+            (a, b) => machineSortScore(b) - machineSortScore(a) || a.name.localeCompare(b.name)
+        );
+        const names = applySavedOrder(
+            healthSorted.map((m) => m.name),
+            layoutOrder
+        );
+        const byName = new Map(machines.map((m) => [m.name, m]));
+        return names.map((n) => byName.get(n)).filter((m): m is MachineDashboard => !!m);
+    }, [machines, layoutOrder]);
 
     const visibleMachines = useMemo(() => {
         return sortedMachines.filter((machine) => {
@@ -1614,15 +1799,15 @@ export default function PartsBoardPage() {
             );
             toast.current?.show({
                 severity: 'success',
-                summary: 'Machine hidden',
-                detail: `${machineName} is hidden for this process. Use Hidden machines to restore.`,
+                summary: 'Machine removed',
+                detail: `${machineName} is off this process. Restore it from Removed machines.`,
                 life: 4000
             });
             await loadDashboard(true, dbTarget);
         } catch (e) {
             toast.current?.show({
                 severity: 'error',
-                summary: 'Hide machine failed',
+                summary: 'Remove machine failed',
                 detail: e instanceof Error ? e.message : undefined,
                 life: 5000
             });
@@ -1887,7 +2072,7 @@ export default function PartsBoardPage() {
 
             <header className="pb-toolbar">
                 <span className="pb-toolbar__title">Component monitoring</span>
-                <span className="pb-toolbar__meta">
+                    <span className="pb-toolbar__meta">
                     {developerMode ? `${rollerDbTargetLabel(dbTarget)} · ` : ''}
                     {lastSyncLabel}
                 </span>
@@ -1945,7 +2130,7 @@ export default function PartsBoardPage() {
                         outlined
                         disabled={loading || hideMachineSaving}
                         onClick={() => void openHiddenMachines()}
-                        tooltip="Hidden machines"
+                        tooltip="Removed machines"
                     />
                     {buncherBoard ? (
                         <Link
@@ -2094,10 +2279,28 @@ export default function PartsBoardPage() {
                             onOpenRoller={(lr) => openRollerEdit(machine, lr.roller)}
                             onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
                             onOpenCustom={(part) => openCustomEdit(machine, part)}
+                            size={cardSizes[machine.name] ?? null}
+                            dragging={dragName === machine.name}
+                            dropTarget={dropName === machine.name && dragName !== machine.name}
+                            onDragStartName={(name) => {
+                                setDragName(name);
+                                setDropName(name);
+                            }}
+                            onDragOverName={(name) => setDropName(name)}
+                            onDropName={(name) => {
+                                if (dragName) handleCardReorder(dragName, name);
+                                setDragName(null);
+                                setDropName(null);
+                            }}
+                            onDragEnd={() => {
+                                setDragName(null);
+                                setDropName(null);
+                            }}
+                            onResize={(size, persist) => handleCardResize(machine.name, size, persist !== false)}
                             onHideMachine={() => {
                                 if (
                                     typeof window !== 'undefined' &&
-                                    !window.confirm(`Hide ${machine.name} from this process?`)
+                                    !window.confirm(`Remove ${machine.name} from this process?`)
                                 ) {
                                     return;
                                 }
@@ -2410,6 +2613,14 @@ export default function PartsBoardPage() {
                                         gearboxPoolLoading)
                                 }
                             />
+                            <Button
+                                icon="pi pi-trash"
+                                label="Remove"
+                                severity="danger"
+                                loading={saving}
+                                onClick={() => void handleRemoveComponent()}
+                                disabled={!selectedPart.part.partId}
+                            />
                         </div>
                         <div className="pb-comp-history">
                             <div className="pb-comp-history__head">
@@ -2601,7 +2812,7 @@ export default function PartsBoardPage() {
 
             <Dialog
                 className="pb-add-dialog"
-                header="Hidden machines"
+                header="Removed machines"
                 visible={hiddenMachinesOpen}
                 style={{ width: 'min(92vw, 28rem)' }}
                 onHide={() => setHiddenMachinesOpen(false)}
@@ -2610,14 +2821,14 @@ export default function PartsBoardPage() {
                 <div className="flex flex-column gap-3">
                     <Message
                         severity="info"
-                        text="Machines hidden for this process only. Restore to show them on the board again."
+                        text="Machines removed from this process only. Restore to show them on the board again."
                     />
                     {hiddenMachinesLoading ? (
                         <div className="flex justify-content-center p-3">
                             <ProgressSpinner style={{ width: '2.5rem', height: '2.5rem' }} />
                         </div>
                     ) : hiddenMachines.length === 0 ? (
-                        <div className="text-color-secondary text-sm">No hidden machines for this process.</div>
+                        <div className="text-color-secondary text-sm">No removed machines for this process.</div>
                     ) : (
                         <ul className="pb-hidden-list">
                             {hiddenMachines.map((m) => (

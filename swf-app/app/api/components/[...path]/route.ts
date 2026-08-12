@@ -4,6 +4,7 @@ import { proxyErrorPayload, proxySwfApi } from '@/lib/api/swfApiProxy';
 const ALLOWED_GET = new Set(['select', 'history', 'machines', 'gearbox', 'gearbox/history']);
 const ALLOWED_POST = new Set([
     'replace',
+    'remove',
     'updateruntime',
     'updateruntimelimit',
     'insert',

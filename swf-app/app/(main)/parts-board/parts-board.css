@@ -87,6 +87,7 @@
 }
 
 .pb-machine {
+    position: relative;
     flex: 0 0 var(--pb-card-width);
     width: var(--pb-card-width);
     border: 1px solid var(--surface-border);
@@ -113,6 +114,14 @@
 .pb-machine--warn { border-left: 4px solid var(--pb-due); }
 .pb-machine--run { border-left: 4px solid var(--pb-run); }
 .pb-machine--idle { border-left: 4px solid var(--pb-stop); }
+.pb-machine--dragging { opacity: 0.55; }
+.pb-machine--drop {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 35%, transparent);
+}
+.pb-machine--sized .pb-machine__body {
+    overflow: auto;
+}
 
 .pb-machine__head {
     display: flex;
@@ -122,6 +131,52 @@
     padding: 0.6rem 0.7rem;
     background: linear-gradient(180deg, var(--surface-100), var(--surface-0));
     flex-shrink: 0;
+}
+
+.pb-machine__drag {
+    appearance: none;
+    flex-shrink: 0;
+    width: 1.45rem;
+    height: 1.45rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-color-secondary);
+    cursor: grab;
+    padding: 0;
+}
+
+.pb-machine__drag:active {
+    cursor: grabbing;
+}
+
+.pb-machine__drag:hover {
+    background: color-mix(in srgb, var(--surface-hover, #e2e8f0) 80%, transparent);
+    color: var(--text-color);
+}
+
+.pb-machine__resize {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 1.05rem;
+    height: 1.05rem;
+    padding: 0;
+    border: 0;
+    cursor: nwse-resize;
+    background:
+        linear-gradient(
+            135deg,
+            transparent 0 46%,
+            color-mix(in srgb, var(--text-color-secondary) 70%, transparent) 46% 54%,
+            transparent 54% 70%,
+            color-mix(in srgb, var(--text-color-secondary) 70%, transparent) 70% 78%,
+            transparent 78%
+        );
+    z-index: 2;
 }
 
 .pb-machine__body {

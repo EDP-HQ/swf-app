@@ -8,6 +8,7 @@ export type ComponentsApiEndpoint =
     | 'select'
     | 'history'
     | 'replace'
+    | 'remove'
     | 'updateruntime'
     | 'updateruntimelimit'
     | 'insert';
@@ -290,6 +291,30 @@ export async function updateComponentRuntimeLimit(
                 RuntimeLimit: runtimeLimitHours,
                 ...(options.partId ? { PartId: options.partId } : {}),
                 ...(options.machineName ? { MachineName: options.machineName } : {}),
+                ...(options.partKey
+                    ? { PartKey: options.partKey, PartSeq: fixedPartKeyToSeq(options.partKey) }
+                    : {})
+            }
+        },
+        target
+    );
+}
+
+export async function removeComponent(
+    machineName: string,
+    target = getRollerDbTarget(),
+    options: { partKey?: MachineFixedPartKey; partId?: string } = {}
+): Promise<void> {
+    if (!options.partId && !options.partKey) {
+        throw new Error('PartId or part key required');
+    }
+
+    await postComponentsEndpoint(
+        'remove',
+        {
+            params: {
+                MachineName: machineName,
+                ...(options.partId ? { PartId: options.partId } : {}),
                 ...(options.partKey
                     ? { PartKey: options.partKey, PartSeq: fixedPartKeyToSeq(options.partKey) }
                     : {})
