@@ -372,6 +372,7 @@ export async function insertComponent(
     options: {
         partKey?: MachineFixedPartKey;
         partType?: string;
+        partDetails?: string;
         company?: string;
         factory?: string;
         processCd?: string;
@@ -380,7 +381,7 @@ export async function insertComponent(
 ): Promise<void> {
     const partKey = options.partKey;
     const partType =
-        options.partType?.trim().toUpperCase() ||
+        options.partType?.trim() ||
         (partKey ? componentOptionByKey(partKey)?.partType : undefined);
 
     if (!partType) {
@@ -396,6 +397,7 @@ export async function insertComponent(
                 Company: options.company ?? 'KSB',
                 Factory: options.factory ?? 'F002',
                 PartType: partType,
+                PartDetails: options.partDetails?.trim() || null,
                 ProcessCd: options.processCd ?? 'STRANDING',
                 LineCd: options.lineCd ?? null
             }

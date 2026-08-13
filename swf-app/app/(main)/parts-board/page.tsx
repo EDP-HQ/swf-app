@@ -8,6 +8,7 @@ import { Dialog } from 'primereact/dialog';
 import { Dropdown } from 'primereact/dropdown';
 import { InputNumber } from 'primereact/inputnumber';
 import { InputText } from 'primereact/inputtext';
+import { InputTextarea } from 'primereact/inputtextarea';
 import { Message } from 'primereact/message';
 import { ProgressBar } from 'primereact/progressbar';
 import { ProgressSpinner } from 'primereact/progressspinner';
@@ -40,16 +41,9 @@ import {
     type RollerHistoryRow
 } from '@/lib/roller-monitoring/rollerClient';
 import {
-    ADD_PART_CUSTOM,
     COMPONENT_DEFAULT_COMPANY,
     COMPONENT_DEFAULT_FACTORY,
-    COMPONENT_PART_OPTIONS,
-    componentOptionByKey,
-    isComponentRegistered,
-    isCustomPartNameTaken,
-    missingComponentOptions,
-    type AddPartChoice,
-    type ComponentPartOption
+    isCustomPartNameTaken
 } from '@/lib/roller-monitoring/componentCatalog';
 import {
     fetchComponents,
@@ -945,8 +939,8 @@ export default function PartsBoardPage() {
     const [addComponentOpen, setAddComponentOpen] = useState(false);
     const [addSaving, setAddSaving] = useState(false);
     const [addMachineName, setAddMachineName] = useState<string | null>(null);
-    const [addPartChoice, setAddPartChoice] = useState<AddPartChoice | null>(null);
     const [addCustomPartName, setAddCustomPartName] = useState('');
+    const [addPartDetails, setAddPartDetails] = useState('');
     const [addCompany, setAddCompany] = useState(COMPONENT_DEFAULT_COMPANY);
     const [addFactory, setAddFactory] = useState(COMPONENT_DEFAULT_FACTORY);
     const [addLimitHours, setAddLimitHours] = useState(GEARBOX_DEFAULT_LIMIT_HOURS);
@@ -2159,40 +2153,17 @@ export default function PartsBoardPage() {
         [machines, addMachineName]
     );
 
-    const addPartOptions = useMemo(() => {
-        if (!addTargetMachine) return [];
-        return [
-            ...COMPONENT_PART_OPTIONS.map((opt) => {
-                const registered = isComponentRegistered(addTargetMachine, opt.key);
-                return {
-                    label: registered ? `${opt.label} (registered)` : opt.label,
-                    value: opt.key,
-                    disabled: registered
-                };
-            }),
-            { label: 'Other (custom name…)', value: ADD_PART_CUSTOM, disabled: false }
-        ];
-    }, [addTargetMachine]);
-
     const addPartAvailable = useMemo(() => {
-        if (!addTargetMachine || !addPartChoice) return false;
-        if (addPartChoice === ADD_PART_CUSTOM) {
-            const name = addCustomPartName.trim();
-            return name.length > 0 && name.length <= 20 && !isCustomPartNameTaken(addTargetMachine, name);
-        }
-        return !isComponentRegistered(addTargetMachine, addPartChoice);
-    }, [addTargetMachine, addPartChoice, addCustomPartName]);
+        if (!addTargetMachine) return false;
+        const name = addCustomPartName.trim();
+        return name.length > 0 && name.length <= 100 && !isCustomPartNameTaken(addTargetMachine, name);
+    }, [addTargetMachine, addCustomPartName]);
 
     const openAddComponent = () => {
-        const firstWithSlot =
-            sortedMachines.find((m) => missingComponentOptions(m).length > 0) ?? sortedMachines[0] ?? null;
-        const parts = firstWithSlot ? missingComponentOptions(firstWithSlot) : [];
-        const firstPart: ComponentPartOption | undefined = parts[0];
-
-        setAddMachineName(firstWithSlot?.name ?? null);
-        setAddPartChoice(firstPart?.key ?? ADD_PART_CUSTOM);
+        setAddMachineName(sortedMachines[0]?.name ?? null);
         setAddCustomPartName('');
-        setAddLimitHours(firstPart?.defaultLimitHours ?? CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS);
+        setAddPartDetails('');
+        setAddLimitHours(CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS);
         setAddCompany(COMPONENT_DEFAULT_COMPANY);
         setAddFactory(COMPONENT_DEFAULT_FACTORY);
         setAddComponentOpen(true);
@@ -2200,54 +2171,31 @@ export default function PartsBoardPage() {
 
     const onAddMachineChange = (name: string | null) => {
         setAddMachineName(name);
-        const machine = name ? machines.find((m) => m.name === name) : null;
-        if (!machine) {
-            setAddPartChoice(null);
-            setAddCustomPartName('');
-            return;
-        }
-        const parts = missingComponentOptions(machine);
-        const first = parts[0];
-        setAddPartChoice(first?.key ?? ADD_PART_CUSTOM);
         setAddCustomPartName('');
-        if (first) setAddLimitHours(first.defaultLimitHours);
-        else setAddLimitHours(CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS);
-    };
-
-    const onAddPartChange = (choice: AddPartChoice | null) => {
-        setAddPartChoice(choice);
-        if (choice === ADD_PART_CUSTOM) {
-            setAddLimitHours(CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS);
-            return;
-        }
-        const opt = choice ? componentOptionByKey(choice) : undefined;
-        if (opt) setAddLimitHours(opt.defaultLimitHours);
+        setAddPartDetails('');
+        setAddLimitHours(CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS);
     };
 
     const handleAddComponent = async () => {
-        if (!addMachineName || !addPartChoice) return;
+        if (!addMachineName) return;
+        const name = addCustomPartName.trim();
+        if (!name) return;
         setAddSaving(true);
         try {
-            if (addPartChoice === ADD_PART_CUSTOM) {
-                const name = addCustomPartName.trim();
-                if (!name) return;
-                await insertComponent(addMachineName, addLimitHours, dbTarget, {
-                    partType: name.toUpperCase(),
-                    company: addCompany.trim(),
-                    factory: addFactory.trim(),
-                    processCd,
-                    lineCd: processCd === 'STRANDING' ? strandLineCd : null
-                });
-            } else {
-                await insertComponent(addMachineName, addLimitHours, dbTarget, {
-                    partKey: addPartChoice,
-                    company: addCompany.trim(),
-                    factory: addFactory.trim(),
-                    processCd,
-                    lineCd: processCd === 'STRANDING' ? strandLineCd : null
-                });
-            }
-            toast.current?.show({ severity: 'success', summary: 'Component added', life: 3000 });
+            await insertComponent(addMachineName, addLimitHours, dbTarget, {
+                partType: name,
+                partDetails: addPartDetails.trim() || undefined,
+                company: addCompany.trim(),
+                factory: addFactory.trim(),
+                processCd,
+                lineCd: processCd === 'STRANDING' ? strandLineCd : null
+            });
+            toast.current?.show({
+                severity: 'success',
+                summary: 'Component added',
+                detail: `${name} on ${addMachineName}`,
+                life: 3000
+            });
             setAddComponentOpen(false);
             await loadDashboard(true, dbTarget);
         } catch (e) {
@@ -2737,6 +2685,10 @@ export default function PartsBoardPage() {
                             <dd>{selectedPart.machine.name}</dd>
                             <dt>Part</dt>
                             <dd>{selectedPart.part.displayName}</dd>
+                            <dt>Details</dt>
+                            <dd className="pb-edit-details">
+                                {selectedPart.part.details?.trim() ? selectedPart.part.details : '—'}
+                            </dd>
                             <dt>Part ID</dt>
                             <dd className="pb-fs-mono">{selectedPart.part.partId || '—'}</dd>
                             {(selectedPart.kind === 'fixed' && selectedPart.partKey === 'gearbox') ||
@@ -2963,36 +2915,36 @@ export default function PartsBoardPage() {
                         />
                     </div>
                     <div>
-                        <label className="block mb-2 text-sm font-medium">Part</label>
-                        <Dropdown
-                            value={addPartChoice}
-                            options={addPartOptions}
-                            optionDisabled="disabled"
-                            onChange={(e) => onAddPartChange(e.value as AddPartChoice | null)}
-                            placeholder="Select part"
+                        <label className="block mb-2 text-sm font-medium">Component name</label>
+                        <InputText
+                            value={addCustomPartName}
+                            onChange={(e) => setAddCustomPartName(e.target.value)}
+                            placeholder="e.g. Bearing, Gearbox, Seal"
+                            maxLength={100}
+                            className="w-full"
+                            disabled={!addTargetMachine}
+                        />
+                        {addCustomPartName.trim() &&
+                        addTargetMachine &&
+                        isCustomPartNameTaken(addTargetMachine, addCustomPartName) ? (
+                            <small className="text-color-secondary block mt-1">
+                                This name is already registered on this machine.
+                            </small>
+                        ) : null}
+                    </div>
+                    <div>
+                        <label className="block mb-2 text-sm font-medium">Details</label>
+                        <InputTextarea
+                            value={addPartDetails}
+                            onChange={(e) => setAddPartDetails(e.target.value)}
+                            placeholder="Optional notes (maker, size, side, …)"
+                            rows={3}
+                            autoResize
+                            maxLength={500}
                             className="w-full"
                             disabled={!addTargetMachine}
                         />
                     </div>
-                    {addPartChoice === ADD_PART_CUSTOM ? (
-                        <div>
-                            <label className="block mb-2 text-sm font-medium">Part name</label>
-                            <InputText
-                                value={addCustomPartName}
-                                onChange={(e) => setAddCustomPartName(e.target.value)}
-                                placeholder="e.g. Bearing"
-                                maxLength={20}
-                                className="w-full"
-                            />
-                            {addCustomPartName.trim() &&
-                            addTargetMachine &&
-                            isCustomPartNameTaken(addTargetMachine, addCustomPartName) ? (
-                                <small className="text-color-secondary block mt-1">
-                                    This part name is already registered on this machine.
-                                </small>
-                            ) : null}
-                        </div>
-                    ) : null}
                     <div className="grid grid-nogutter gap-3">
                         <div className="col-12 md:col-6">
                             <label className="block mb-2 text-sm font-medium">Company</label>
@@ -3020,14 +2972,6 @@ export default function PartsBoardPage() {
                             className="w-full"
                         />
                     </div>
-                    {addPartChoice !== ADD_PART_CUSTOM &&
-                    addPartOptions.filter((o) => o.value !== ADD_PART_CUSTOM && !o.disabled).length === 0 &&
-                    addMachineName ? (
-                        <Message
-                            severity="info"
-                            text="Standard parts are registered. Choose “Other (custom name…)” to add bearing or other parts."
-                        />
-                    ) : null}
                     <div className="flex gap-2 justify-content-end">
                         <Button label="Cancel" text onClick={() => setAddComponentOpen(false)} disabled={addSaving} />
                         <Button
@@ -3035,7 +2979,7 @@ export default function PartsBoardPage() {
                             icon="pi pi-check"
                             loading={addSaving}
                             disabled={!addMachineName || !addPartAvailable || addLimitHours < 1}
-                            onClick={handleAddComponent}
+                            onClick={() => void handleAddComponent()}
                         />
                     </div>
                 </div>

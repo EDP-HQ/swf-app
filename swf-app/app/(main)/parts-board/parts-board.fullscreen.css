@@ -271,6 +271,11 @@
     font-weight: 600;
 }
 
+.pb-edit-details {
+    white-space: pre-wrap;
+    font-weight: 500;
+}
+
 .pb-fs-row--clickable {
     cursor: pointer;
 }

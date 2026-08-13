@@ -38,7 +38,8 @@ function fixedPartFromRow(row: Record<string, unknown>, key: MachineFixedPartKey
             partId: rowStr(row, 'PART_ID'),
             partType: rowStr(row, 'PART_TYPE'),
             partSeq: rowNum(row, 'PART_SEQ') || template.partSeq,
-            replaceDt: rowStr(row, 'REPLACE_DT')
+            replaceDt: rowStr(row, 'REPLACE_DT'),
+            details: rowStr(row, 'PART_DETAILS') || undefined
         },
         runtimeHours,
         limitHours
@@ -57,6 +58,7 @@ function customPartFromRow(row: Record<string, unknown>): FixedPartRow {
             displayName: formatCustomDisplayName(partType),
             partId: rowStr(row, 'PART_ID'),
             replaceDt: rowStr(row, 'REPLACE_DT'),
+            details: rowStr(row, 'PART_DETAILS') || undefined,
             runtimeHours: 0,
             limitHours: CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS,
             status: 'OK',

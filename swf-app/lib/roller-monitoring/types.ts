@@ -24,6 +24,8 @@ export type FixedPartRow = {
     partSeq?: number;
     partKind: FixedPartKind;
     displayName: string;
+    /** Free-text notes from add-component (PART_DETAILS). */
+    details?: string;
     runtimeHours: number;
     limitHours: number;
     replaceDt: string;
