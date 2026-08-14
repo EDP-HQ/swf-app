@@ -12,6 +12,7 @@ export type ComponentsApiEndpoint =
     | 'remove'
     | 'updateruntime'
     | 'updateruntimelimit'
+    | 'updatedetails'
     | 'insert';
 
 export type ComponentHistoryRow = {
@@ -330,6 +331,31 @@ export async function updateComponentRuntimeLimit(
         {
             params: {
                 RuntimeLimit: runtimeLimitHours,
+                ...(options.partId ? { PartId: options.partId } : {}),
+                ...(options.machineName ? { MachineName: options.machineName } : {}),
+                ...(options.partKey
+                    ? { PartKey: options.partKey, PartSeq: fixedPartKeyToSeq(options.partKey) }
+                    : {})
+            }
+        },
+        target
+    );
+}
+
+export async function updateComponentDetails(
+    partDetails: string,
+    target = getRollerDbTarget(),
+    options: { partId?: string; machineName?: string; partKey?: MachineFixedPartKey }
+): Promise<void> {
+    if (!options.partId && (!options.machineName || !options.partKey)) {
+        throw new Error('PartId or machine name + part key required');
+    }
+
+    await postComponentsEndpoint(
+        'updatedetails',
+        {
+            params: {
+                PartDetails: partDetails.trim() || null,
                 ...(options.partId ? { PartId: options.partId } : {}),
                 ...(options.machineName ? { MachineName: options.machineName } : {}),
                 ...(options.partKey

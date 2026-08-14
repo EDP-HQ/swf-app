@@ -52,6 +52,7 @@ import {
     insertComponent,
     removeComponent,
     replaceComponent,
+    updateComponentDetails,
     updateComponentRuntimeLimit,
     type ComponentHistoryRow
 } from '@/lib/roller-monitoring/componentsClient';
@@ -935,6 +936,7 @@ export default function PartsBoardPage() {
     const [highlightRollerKey, setHighlightRollerKey] = useState<string | null>(null);
     const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
     const [limitInput, setLimitInput] = useState(3000);
+    const [detailsInput, setDetailsInput] = useState('');
     const [saving, setSaving] = useState(false);
     const [addComponentOpen, setAddComponentOpen] = useState(false);
     const [addSaving, setAddSaving] = useState(false);
@@ -1340,6 +1342,7 @@ export default function PartsBoardPage() {
     const openFixedEdit = (machine: MachineDashboard, partKey: MachineFixedPartKey, part: FixedPartRow) => {
         setSelectedPart({ kind: 'fixed', machine, partKey, part });
         setLimitInput(part.limitHours);
+        setDetailsInput(part.details ?? '');
         if (partKey === 'gearbox' || part.partType?.toUpperCase() === 'GEARBOX') {
             void loadGearboxPoolForEdit(machine.name, part.partId);
         } else {
@@ -1352,6 +1355,7 @@ export default function PartsBoardPage() {
     const openCustomEdit = (machine: MachineDashboard, part: FixedPartRow) => {
         setSelectedPart({ kind: 'custom', machine, part });
         setLimitInput(part.limitHours);
+        setDetailsInput(part.details ?? '');
         if (part.partType?.toUpperCase() === 'GEARBOX' || part.partKind === 'gearbox') {
             void loadGearboxPoolForEdit(machine.name, part.partId);
         } else {
@@ -1411,6 +1415,7 @@ export default function PartsBoardPage() {
         setGearboxSpares([]);
         setGearboxCurrent(null);
         setSpareGearboxId(null);
+        setDetailsInput('');
     };
 
     const handleSaveLimit = async () => {
@@ -1459,6 +1464,38 @@ export default function PartsBoardPage() {
             toast.current?.show({
                 severity: 'error',
                 summary: 'Save failed',
+                detail: e instanceof Error ? e.message : undefined,
+                life: 5000
+            });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleSaveDetails = async () => {
+        if (!selectedPart || (selectedPart.kind !== 'fixed' && selectedPart.kind !== 'custom')) return;
+        if (!selectedPart.part.partId) {
+            toast.current?.show({ severity: 'warn', summary: 'Component not registered', life: 4000 });
+            return;
+        }
+        setSaving(true);
+        try {
+            await updateComponentDetails(detailsInput, dbTarget, {
+                partId: selectedPart.part.partId,
+                ...(selectedPart.kind === 'fixed'
+                    ? { machineName: selectedPart.machine.name, partKey: selectedPart.partKey }
+                    : {})
+            });
+            toast.current?.show({ severity: 'success', summary: 'Details saved', life: 3000 });
+            setSelectedPart({
+                ...selectedPart,
+                part: { ...selectedPart.part, details: detailsInput.trim() || undefined }
+            });
+            await loadDashboard(true, dbTarget);
+        } catch (e) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Save details failed',
                 detail: e instanceof Error ? e.message : undefined,
                 life: 5000
             });
@@ -2685,35 +2722,6 @@ export default function PartsBoardPage() {
                             <dd>{selectedPart.machine.name}</dd>
                             <dt>Part</dt>
                             <dd>{selectedPart.part.displayName}</dd>
-                            <dt>Details</dt>
-                            <dd className="pb-edit-details">
-                                {selectedPart.part.details?.trim() ? selectedPart.part.details : '—'}
-                            </dd>
-                            <dt>Part ID</dt>
-                            <dd className="pb-fs-mono">{selectedPart.part.partId || '—'}</dd>
-                            {(selectedPart.kind === 'fixed' && selectedPart.partKey === 'gearbox') ||
-                            selectedPart.part.partType?.toUpperCase() === 'GEARBOX' ? (
-                                <>
-                                    <dt>Gearbox</dt>
-                                    <dd>
-                                        {gearboxPoolLoading
-                                            ? '…'
-                                            : gearboxCurrent
-                                              ? gearboxLabel(gearboxCurrent)
-                                              : selectedPart.part.partId || '—'}
-                                    </dd>
-                                    <dt>Lifetime runtime</dt>
-                                    <dd>
-                                        {gearboxCurrent
-                                            ? formatRuntimeHms(gearboxCurrent.lifetimeRuntimeSec / 3600)
-                                            : '—'}
-                                    </dd>
-                                </>
-                            ) : null}
-                            <dt>Type</dt>
-                            <dd>{formatPartTypeLabel(selectedPart.part)}</dd>
-                            <dt>Seq</dt>
-                            <dd>{selectedPart.part.partSeq ?? '—'}</dd>
                             <dt>Installed</dt>
                             <dd>{formatReplaceDt(selectedPart.part.replaceDt)}</dd>
                             <dt>Runtime</dt>
@@ -2749,6 +2757,27 @@ export default function PartsBoardPage() {
                                 />
                             </dd>
                         </dl>
+                        <label className="block mb-2 text-sm font-medium">Details</label>
+                        <InputTextarea
+                            value={detailsInput}
+                            onChange={(e) => setDetailsInput(e.target.value)}
+                            placeholder="Add notes (maker, size, side, …)"
+                            rows={3}
+                            autoResize
+                            maxLength={500}
+                            className="w-full mb-2"
+                            disabled={!selectedPart.part.partId}
+                        />
+                        <div className="pb-edit-actions mb-3">
+                            <Button
+                                icon="pi pi-save"
+                                label="Save details"
+                                outlined
+                                loading={saving}
+                                onClick={() => void handleSaveDetails()}
+                                disabled={!selectedPart.part.partId}
+                            />
+                        </div>
                         <label className="block mb-2 text-sm font-medium">Runtime limit (hours)</label>
                         <InputNumber
                             value={limitInput}

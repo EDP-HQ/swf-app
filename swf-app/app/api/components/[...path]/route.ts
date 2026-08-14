@@ -15,6 +15,7 @@ const ALLOWED_POST = new Set([
     'remove',
     'updateruntime',
     'updateruntimelimit',
+    'updatedetails',
     'insert',
     'machines',
     'machines/visible',
