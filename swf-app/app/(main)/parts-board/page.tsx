@@ -69,7 +69,7 @@ import {
     type CardSize,
     type DropWhere
 } from '@/lib/roller-monitoring/boardLayout';
-import { fetchCmMachines, insertCmMachine, normalizeInlineMachineCd, renameCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
+import { fetchCmMachines, insertCmMachine, renameCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
 import {
     fetchGearboxAssets,
     gearboxLabel,
@@ -1929,19 +1929,8 @@ export default function PartsBoardPage() {
             toast.current?.show({ severity: 'warn', summary: 'Machine name is required', life: 3000 });
             return;
         }
-        if (processCd === 'INLINE' && newCode && !normalizeInlineMachineCd(newCode)) {
-            toast.current?.show({
-                severity: 'warn',
-                summary: 'Machine code must be INnnnn or LInnnn',
-                detail: 'Example: IN0012 or LI0012',
-                life: 4000
-            });
-            return;
-        }
         const nameChanged = newName !== oldName;
-        const codeChanged =
-            processCd === 'INLINE' &&
-            (normalizeInlineMachineCd(newCode) || '') !== (normalizeInlineMachineCd(oldCode) || '');
+        const codeChanged = processCd === 'INLINE' && newCode !== oldCode;
         if (!nameChanged && !codeChanged) {
             setRenameMachineOpen(false);
             return;
@@ -2007,11 +1996,10 @@ export default function PartsBoardPage() {
             toast.current?.show({ severity: 'warn', summary: 'Machine name is required', life: 3000 });
             return;
         }
-        if (processCd === 'INLINE' && !normalizeInlineMachineCd(code)) {
+        if (processCd === 'INLINE' && !code) {
             toast.current?.show({
                 severity: 'warn',
                 summary: 'Machine code is required',
-                detail: 'Enter takeup/plant code INnnnn or LInnnn (e.g. IN0012).',
                 life: 4000
             });
             return;
@@ -3080,9 +3068,9 @@ export default function PartsBoardPage() {
                             <InputText
                                 value={addMachineCodeInput}
                                 onChange={(e) => setAddMachineCodeInput(e.target.value)}
-                                placeholder="IN0012 or LI0012"
+                                placeholder="Machine code"
                                 className="w-full"
-                                maxLength={20}
+                                maxLength={50}
                             />
                         </div>
                     ) : null}
@@ -3112,7 +3100,7 @@ export default function PartsBoardPage() {
                             loading={addMachineSaving}
                             disabled={
                                 !addMachineNameInput.trim() ||
-                                (processCd === 'INLINE' && !normalizeInlineMachineCd(addMachineCodeInput))
+                                (processCd === 'INLINE' && !addMachineCodeInput.trim())
                             }
                             onClick={() => void handleAddMachine()}
                         />
@@ -3133,7 +3121,7 @@ export default function PartsBoardPage() {
                         severity="info"
                         text={
                             processCd === 'INLINE'
-                                ? 'Name is the card label. Machine code (IN0001 or LI0001) links Run/Stop from takeup.'
+                                ? 'Name is the card label. Machine code is stored as entered and used to match Run/Stop.'
                                 : 'Renames this machine on the board and its components. Use the plant name (e.g. 12X13HSP) if you want Run/Stop to match.'
                         }
                     />
@@ -3158,9 +3146,9 @@ export default function PartsBoardPage() {
                             <InputText
                                 value={renameMachineCodeInput}
                                 onChange={(e) => setRenameMachineCodeInput(e.target.value)}
-                                placeholder="IN0012 or LI0012"
+                                placeholder="Machine code"
                                 className="w-full"
-                                maxLength={20}
+                                maxLength={50}
                             />
                         </div>
                     ) : null}
@@ -3177,13 +3165,9 @@ export default function PartsBoardPage() {
                             loading={renameMachineSaving}
                             disabled={
                                 !renameMachineInput.trim() ||
-                                (processCd === 'INLINE' &&
-                                    renameMachineCodeInput.trim() !== '' &&
-                                    !normalizeInlineMachineCd(renameMachineCodeInput)) ||
                                 (renameMachineInput.trim() === renameMachineFrom.trim() &&
                                     (processCd !== 'INLINE' ||
-                                        (normalizeInlineMachineCd(renameMachineCodeInput) || '') ===
-                                            (normalizeInlineMachineCd(renameMachineCodeFrom) || '')))
+                                        renameMachineCodeInput.trim() === renameMachineCodeFrom.trim()))
                             }
                             onClick={() => void handleRenameMachine()}
                         />
