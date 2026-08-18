@@ -73,6 +73,7 @@ export type RegistryMachineInput = {
     machineName: string;
     machineNo?: string;
     running?: boolean;
+    isLineCard?: boolean;
 };
 
 /** Build machine shells from the process registry (plant Run/Stop when present). */
@@ -84,15 +85,17 @@ export function machinesFromRegistry(
         .map((m) => ({
             machineName: m.machineName.trim(),
             machineNo: m.machineNo?.trim() || '',
-            running: !!m.running
+            running: !!m.running,
+            isLineCard: !!m.isLineCard
         }))
         .filter((m) => m.machineName)
-        .sort((a, b) => a.machineName.localeCompare(b.machineName))
+        .sort((a, b) => Number(b.isLineCard) - Number(a.isLineCard) || a.machineName.localeCompare(b.machineName))
         .map((m) =>
             recountMachine({
                 name: m.machineName,
                 machineNo: m.machineNo,
                 running: m.running,
+                isLineCard: m.isLineCard,
                 rollers: [],
                 gearbox: createGearbox(),
                 skipperFront: createSkipperFront(),

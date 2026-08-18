@@ -109,6 +109,17 @@ export function applyOnoffToMachines(
             machineNo: hit.machineNo || m.machineNo,
             running: hit.running
         });
+        });
+}
+
+/** INLINE shared line card: Run if any coded takeup on the board is running. */
+export function applyInlineLineRunning(machines: MachineDashboard[]): MachineDashboard[] {
+    const anyCodedRunning = machines.some(
+        (m) => !m.isLineCard && !!String(m.machineNo || '').trim() && m.running
+    );
+    return machines.map((m) => {
+        if (!m.isLineCard) return m;
+        return recountMachine({ ...m, running: anyCodedRunning });
     });
 }
 

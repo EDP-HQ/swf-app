@@ -35,8 +35,11 @@ export type FixedPartRow = {
 
 export type PlantRunStatus = 'run' | 'stop' | 'not_found';
 
-/** Run/Stop only when linked to a plant machine; otherwise Not found. */
-export function plantRunStatus(machine: Pick<MachineDashboard, 'running' | 'machineNo'>): PlantRunStatus {
+/** Run/Stop only when linked to a plant machine; line cards follow any coded takeup. */
+export function plantRunStatus(
+    machine: Pick<MachineDashboard, 'running' | 'machineNo' | 'isLineCard'>
+): PlantRunStatus {
+    if (machine.isLineCard) return machine.running ? 'run' : 'stop';
     if (!String(machine.machineNo || '').trim()) return 'not_found';
     return machine.running ? 'run' : 'stop';
 }
@@ -45,6 +48,8 @@ export type MachineDashboard = {
     name: string;
     machineNo: string;
     running: boolean;
+    /** INLINE shared line card — not a takeup machine. */
+    isLineCard?: boolean;
     rollers: RollerRow[];
     gearbox: FixedPartRow;
     skipperFront: FixedPartRow;

@@ -77,7 +77,7 @@ import {
     type GearboxAssetRow
 } from '@/lib/roller-monitoring/gearboxClient';
 import { applyComponentsToMachines, applyRollersToRegistryMachines, machinesFromRegistry } from '@/lib/roller-monitoring/mergeComponents';
-import { applyOnoffToMachines } from '@/lib/roller-monitoring/mergeDashboard';
+import { applyOnoffToMachines, applyInlineLineRunning } from '@/lib/roller-monitoring/mergeDashboard';
 import {
     isBuncherBoard,
     isBuncherMachineName,
@@ -653,7 +653,8 @@ function MachineCard({
     onDragPointerDown,
     onDragPointerMove,
     onDragPointerUp,
-    onResize
+    onResize,
+    lineLayout = false
 }: {
     machine: MachineDashboard;
     syncEpochMs: number;
@@ -677,6 +678,7 @@ function MachineCard({
     onDragPointerMove?: (e: React.PointerEvent) => void;
     onDragPointerUp?: (e: React.PointerEvent) => void;
     onResize?: (size: CardSize, persist?: boolean) => void;
+    lineLayout?: boolean;
 }) {
     const cardRef = useRef<HTMLElement | null>(null);
     const resizeStart = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -729,14 +731,15 @@ function MachineCard({
         <article
             ref={cardRef}
             data-machine-card={machine.name}
-            className={`pb-machine pb-machine--${cardTone}${dragging ? ' pb-machine--dragging' : ''}${dropTarget && dropWhere === 'swap' ? ' pb-machine--drop pb-machine--drop-swap' : ''}${size ? ' pb-machine--sized' : ''}`}
+            className={`pb-machine pb-machine--${cardTone}${lineLayout ? ' pb-machine--line' : ''}${dragging ? ' pb-machine--dragging' : ''}${dropTarget && dropWhere === 'swap' ? ' pb-machine--drop pb-machine--drop-swap' : ''}${!lineLayout && size ? ' pb-machine--sized' : ''}`}
             style={
-                size
+                !lineLayout && size
                     ? { width: size.w, flexBasis: size.w, minHeight: size.h, height: size.h }
                     : undefined
             }
         >
             <header className="pb-machine__head">
+                {!lineLayout ? (
                 <span
                     className="pb-machine__drag"
                     title="Drag to rearrange or stack"
@@ -755,7 +758,11 @@ function MachineCard({
                 >
                     <i className="pi pi-bars" />
                 </span>
-                <h3 className="pb-machine__name">{machine.name}</h3>
+                ) : null}
+                <h3 className="pb-machine__name">
+                    {machine.name}
+                    {lineLayout ? <span className="pb-machine__line-tag">Line</span> : null}
+                </h3>
                 <div className="pb-machine__head-actions">
                     {onOpenSettings ? (
                         <Button
@@ -793,7 +800,9 @@ function MachineCard({
                         title={
                             runStatus === 'not_found'
                                 ? 'No plant machine with this name — Run/Stop unavailable'
-                                : undefined
+                                : lineLayout
+                                  ? 'Run when any coded INLINE takeup is running'
+                                  : undefined
                         }
                     >
                         <i
@@ -883,7 +892,7 @@ function MachineCard({
                     </div>
                 ) : null}
             </div>
-            {onResize ? (
+            {onResize && !lineLayout ? (
                 <button
                     type="button"
                     className="pb-machine__resize"
@@ -948,6 +957,7 @@ export default function PartsBoardPage() {
     const [addMachineCompany, setAddMachineCompany] = useState(COMPONENT_DEFAULT_COMPANY);
     const [addMachineFactory, setAddMachineFactory] = useState(COMPONENT_DEFAULT_FACTORY);
     const [addMachineCodeInput, setAddMachineCodeInput] = useState('');
+    const [addMachineLineYn, setAddMachineLineYn] = useState(false);
     const [renameMachineOpen, setRenameMachineOpen] = useState(false);
     const [renameMachineSaving, setRenameMachineSaving] = useState(false);
     const [renameMachineFrom, setRenameMachineFrom] = useState('');
@@ -1044,7 +1054,14 @@ export default function PartsBoardPage() {
                 .filter((m) => m.visible)
                 .filter((m) => (useBuncher ? true : !isBuncherMachineName(m.machineName)));
 
-            let incoming = machinesFromRegistry(allowed);
+            let incoming = machinesFromRegistry(
+                allowed.map((m) => ({
+                    machineName: m.machineName,
+                    machineNo: m.machineNo,
+                    running: m.running,
+                    isLineCard: m.isLineCard
+                }))
+            );
 
             if (useBuncher && rollerData) {
                 incoming = applyRollersToRegistryMachines(incoming, rollerData.machines);
@@ -1052,6 +1069,10 @@ export default function PartsBoardPage() {
                 incoming = applyOnoffToMachines(incoming, plantOnoff, {
                     matchByCodeOnly: activeProcess === 'INLINE'
                 });
+            }
+
+            if (activeProcess === 'INLINE') {
+                incoming = applyInlineLineRunning(incoming);
             }
 
             const prev = machinesRef.current;
@@ -1765,30 +1786,43 @@ export default function PartsBoardPage() {
 
     const searchLower = search.trim().toLowerCase();
 
+    const lineMachines = useMemo(
+        () =>
+            machines.filter(
+                (m) =>
+                    !!m.isLineCard &&
+                    (!searchLower || m.name.toLowerCase().includes(searchLower))
+            ),
+        [machines, searchLower]
+    );
+
+    const columnMachines = useMemo(() => machines.filter((m) => !m.isLineCard), [machines]);
+
     const sortedMachines = useMemo(() => {
-        const healthSorted = [...machines].sort(
+        const healthSorted = [...columnMachines].sort(
             (a, b) => machineSortScore(b) - machineSortScore(a) || a.name.localeCompare(b.name)
         );
         const cols = normalizeColumns(
             healthSorted.map((m) => m.name),
             layoutColumns
         );
-        const byName = new Map(machines.map((m) => [m.name, m]));
-        return cols
+        const byName = new Map(columnMachines.map((m) => [m.name, m]));
+        const columnSorted = cols
             .flat()
             .map((n) => byName.get(n))
             .filter((m): m is MachineDashboard => !!m);
-    }, [machines, layoutColumns]);
+        return [...lineMachines, ...columnSorted];
+    }, [columnMachines, lineMachines, layoutColumns]);
 
     const visibleColumns = useMemo(() => {
-        const healthSorted = [...machines].sort(
+        const healthSorted = [...columnMachines].sort(
             (a, b) => machineSortScore(b) - machineSortScore(a) || a.name.localeCompare(b.name)
         );
         const cols = normalizeColumns(
             healthSorted.map((m) => m.name),
             layoutColumns
         );
-        const byName = new Map(machines.map((m) => [m.name, m]));
+        const byName = new Map(columnMachines.map((m) => [m.name, m]));
         return cols
             .map((col) =>
                 col
@@ -1797,7 +1831,7 @@ export default function PartsBoardPage() {
                     .filter((m) => !searchLower || m.name.toLowerCase().includes(searchLower))
             )
             .filter((col) => col.length > 0);
-    }, [machines, layoutColumns, searchLower]);
+    }, [columnMachines, layoutColumns, searchLower]);
 
     const visibleMachines = useMemo(() => visibleColumns.flat(), [visibleColumns]);
 
@@ -1895,6 +1929,7 @@ export default function PartsBoardPage() {
     const openAddMachine = () => {
         setAddMachineNameInput('');
         setAddMachineCodeInput('');
+        setAddMachineLineYn(false);
         setAddMachineCompany(COMPONENT_DEFAULT_COMPANY);
         setAddMachineFactory(COMPONENT_DEFAULT_FACTORY);
         setAddMachineOpen(true);
@@ -1925,7 +1960,8 @@ export default function PartsBoardPage() {
             return;
         }
         const nameChanged = newName !== oldName;
-        const codeChanged = processCd === 'INLINE' && newCode !== oldCode;
+        const settingsIsLine = !!machines.find((m) => m.name === oldName)?.isLineCard;
+        const codeChanged = processCd === 'INLINE' && !settingsIsLine && newCode !== oldCode;
         if (!nameChanged && !codeChanged) {
             setRenameMachineOpen(false);
             return;
@@ -1944,7 +1980,7 @@ export default function PartsBoardPage() {
                     lineCd,
                     oldMachineName: oldName,
                     newMachineName: newName,
-                    machineCd: processCd === 'INLINE' ? newCode : null
+                    machineCd: processCd === 'INLINE' && !settingsIsLine ? newCode : null
                 },
                 dbTarget
             );
@@ -1991,7 +2027,7 @@ export default function PartsBoardPage() {
             toast.current?.show({ severity: 'warn', summary: 'Machine name is required', life: 3000 });
             return;
         }
-        if (processCd === 'INLINE' && !code) {
+        if (processCd === 'INLINE' && !addMachineLineYn && !code) {
             toast.current?.show({
                 severity: 'warn',
                 summary: 'Machine code is required',
@@ -2011,7 +2047,8 @@ export default function PartsBoardPage() {
                     processCd,
                     lineCd: processCd === 'STRANDING' ? strandLineCd : null,
                     machineName: name,
-                    machineCd: processCd === 'INLINE' ? code : undefined,
+                    machineCd: processCd === 'INLINE' && !addMachineLineYn ? code : undefined,
+                    lineYn: processCd === 'INLINE' && addMachineLineYn,
                     company: addMachineCompany.trim() || COMPONENT_DEFAULT_COMPANY,
                     factory: addMachineFactory.trim() || COMPONENT_DEFAULT_FACTORY
                 },
