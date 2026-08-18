@@ -276,6 +276,11 @@
     font-weight: 500;
 }
 
+.pb-edit-details--empty {
+    color: var(--text-color-secondary);
+    font-weight: 500;
+}
+
 .pb-fs-row--clickable {
     cursor: pointer;
 }

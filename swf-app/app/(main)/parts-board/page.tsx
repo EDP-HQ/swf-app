@@ -645,8 +645,7 @@ function MachineCard({
     onOpenRoller,
     onOpenFixed,
     onOpenCustom,
-    onHideMachine,
-    onRenameMachine,
+    onOpenSettings,
     onDragStartName,
     onDragOverName,
     onDropName,
@@ -669,8 +668,7 @@ function MachineCard({
     onOpenRoller: (live: LiveRoller) => void;
     onOpenFixed: (partKey: MachineFixedPartKey, part: FixedPartRow) => void;
     onOpenCustom: (part: FixedPartRow) => void;
-    onHideMachine?: () => void;
-    onRenameMachine?: () => void;
+    onOpenSettings?: () => void;
     onDragStartName?: (name: string) => void;
     onDragOverName?: (name: string, where: DropWhere) => void;
     onDropName?: (name: string, where: DropWhere) => void;
@@ -759,33 +757,18 @@ function MachineCard({
                 </span>
                 <h3 className="pb-machine__name">{machine.name}</h3>
                 <div className="pb-machine__head-actions">
-                    {onRenameMachine ? (
+                    {onOpenSettings ? (
                         <Button
-                            icon="pi pi-pencil"
+                            icon="pi pi-cog"
                             rounded
                             text
                             size="small"
                             className="pb-machine__fs-btn"
-                            aria-label="Edit machine name"
-                            tooltip="Edit machine name"
+                            aria-label="Machine settings"
+                            tooltip="Machine settings"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                onRenameMachine();
-                            }}
-                        />
-                    ) : null}
-                    {onHideMachine ? (
-                        <Button
-                            icon="pi pi-times"
-                            rounded
-                            text
-                            size="small"
-                            className="pb-machine__fs-btn"
-                            aria-label="Remove machine"
-                            tooltip="Remove machine from this process"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onHideMachine();
+                                onOpenSettings();
                             }}
                         />
                     ) : null}
@@ -876,7 +859,7 @@ function MachineCard({
                         />
                     ))}
                     {componentsOnly && !hasAnyComponent ? (
-                        <p className="pb-machine__empty-parts">No components yet — use Add component</p>
+                        <p className="pb-machine__empty-parts">No components yet — open settings to add one</p>
                     ) : null}
                 </div>
 
@@ -886,7 +869,7 @@ function MachineCard({
                             <p className="pb-machine__empty-parts">
                                 {hasAnyComponent
                                     ? 'No rollers linked yet'
-                                    : 'No rollers or components yet — use Add component'}
+                                    : 'No rollers or components yet — open settings to add a component'}
                             </p>
                         ) : (
                             liveRollers.map((lr) => (
@@ -937,8 +920,8 @@ export default function PartsBoardPage() {
     const [selectedPart, setSelectedPart] = useState<SelectedPart | null>(null);
     const [limitInput, setLimitInput] = useState(3000);
     const [detailsInput, setDetailsInput] = useState('');
+    const [detailsEditing, setDetailsEditing] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [addComponentOpen, setAddComponentOpen] = useState(false);
     const [addSaving, setAddSaving] = useState(false);
     const [addMachineName, setAddMachineName] = useState<string | null>(null);
     const [addCustomPartName, setAddCustomPartName] = useState('');
@@ -1348,6 +1331,7 @@ export default function PartsBoardPage() {
         setSelectedPart({ kind: 'fixed', machine, partKey, part });
         setLimitInput(part.limitHours);
         setDetailsInput(part.details ?? '');
+        setDetailsEditing(false);
         if (partKey === 'gearbox' || part.partType?.toUpperCase() === 'GEARBOX') {
             void loadGearboxPoolForEdit(machine.name, part.partId);
         } else {
@@ -1361,6 +1345,7 @@ export default function PartsBoardPage() {
         setSelectedPart({ kind: 'custom', machine, part });
         setLimitInput(part.limitHours);
         setDetailsInput(part.details ?? '');
+        setDetailsEditing(false);
         if (part.partType?.toUpperCase() === 'GEARBOX' || part.partKind === 'gearbox') {
             void loadGearboxPoolForEdit(machine.name, part.partId);
         } else {
@@ -1421,6 +1406,7 @@ export default function PartsBoardPage() {
         setGearboxCurrent(null);
         setSpareGearboxId(null);
         setDetailsInput('');
+        setDetailsEditing(false);
     };
 
     const handleSaveLimit = async () => {
@@ -1492,6 +1478,7 @@ export default function PartsBoardPage() {
                     : {})
             });
             toast.current?.show({ severity: 'success', summary: 'Details saved', life: 3000 });
+            setDetailsEditing(false);
             setSelectedPart({
                 ...selectedPart,
                 part: { ...selectedPart.part, details: detailsInput.trim() || undefined }
@@ -1913,11 +1900,17 @@ export default function PartsBoardPage() {
         setAddMachineOpen(true);
     };
 
-    const openRenameMachine = (machine: MachineDashboard) => {
+    const openMachineSettings = (machine: MachineDashboard) => {
         setRenameMachineFrom(machine.name);
         setRenameMachineInput(machine.name);
         setRenameMachineCodeFrom(machine.machineNo || '');
         setRenameMachineCodeInput(machine.machineNo || '');
+        setAddMachineName(machine.name);
+        setAddCustomPartName('');
+        setAddPartDetails('');
+        setAddLimitHours(CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS);
+        setAddCompany(COMPONENT_DEFAULT_COMPANY);
+        setAddFactory(COMPONENT_DEFAULT_FACTORY);
         setRenameMachineOpen(true);
     };
 
@@ -2058,11 +2051,28 @@ export default function PartsBoardPage() {
             );
             toast.current?.show({
                 severity: 'success',
-                summary: 'Machine removed',
-                detail: `${machineName} is off this process. Restore it from Removed machines.`,
+                summary: 'Machine hidden',
+                detail: `${machineName} is off this board. Restore it from the eye button.`,
                 life: 4000
             });
             await loadDashboard(true, dbTarget);
+            if (hiddenMachinesOpen) {
+                const rows = await fetchCmMachines(
+                    processCd,
+                    processCd === 'STRANDING' ? strandLineCd : null,
+                    dbTarget,
+                    { includeHidden: true }
+                );
+                setHiddenMachines(
+                    rows
+                        .filter((m) => !m.visible)
+                        .map((m) => ({
+                            machineName: m.machineName,
+                            company: m.company,
+                            factory: m.factory
+                        }))
+                );
+            }
         } catch (e) {
             toast.current?.show({
                 severity: 'error',
@@ -2219,23 +2229,6 @@ export default function PartsBoardPage() {
         return name.length > 0 && name.length <= 100 && !isCustomPartNameTaken(addTargetMachine, name);
     }, [addTargetMachine, addCustomPartName]);
 
-    const openAddComponent = () => {
-        setAddMachineName(sortedMachines[0]?.name ?? null);
-        setAddCustomPartName('');
-        setAddPartDetails('');
-        setAddLimitHours(CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS);
-        setAddCompany(COMPONENT_DEFAULT_COMPANY);
-        setAddFactory(COMPONENT_DEFAULT_FACTORY);
-        setAddComponentOpen(true);
-    };
-
-    const onAddMachineChange = (name: string | null) => {
-        setAddMachineName(name);
-        setAddCustomPartName('');
-        setAddPartDetails('');
-        setAddLimitHours(CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS);
-    };
-
     const handleAddComponent = async () => {
         if (!addMachineName) return;
         const name = addCustomPartName.trim();
@@ -2256,7 +2249,7 @@ export default function PartsBoardPage() {
                 detail: `${name} on ${addMachineName}`,
                 life: 3000
             });
-            setAddComponentOpen(false);
+            setRenameMachineOpen(false);
             await loadDashboard(true, dbTarget);
         } catch (e) {
             toast.current?.show({
@@ -2343,7 +2336,7 @@ export default function PartsBoardPage() {
                         outlined
                         disabled={loading || hideMachineSaving}
                         onClick={() => void openHiddenMachines()}
-                        tooltip="Removed machines"
+                        tooltip="Show or hide machines"
                     />
                     {buncherBoard ? (
                         <Link
@@ -2354,14 +2347,6 @@ export default function PartsBoardPage() {
                             <span className="p-button-icon pi pi-cog" />
                         </Link>
                     ) : null}
-                    <Button
-                        icon="pi pi-plus"
-                        rounded
-                        outlined
-                        disabled={loading || machines.length === 0}
-                        onClick={openAddComponent}
-                        tooltip="Add component"
-                    />
                     {buncherBoard ? (
                         <Button
                             icon="pi pi-pencil"
@@ -2528,10 +2513,7 @@ export default function PartsBoardPage() {
                                             setDropWhere(null);
                                         }}
                                         onResize={(size) => handleCardResize(machine.name, size)}
-                                        onRenameMachine={() => openRenameMachine(machine)}
-                                        onHideMachine={() =>
-                                            setConfirmRemove({ kind: 'machine', name: machine.name })
-                                        }
+                                        onOpenSettings={() => openMachineSettings(machine)}
                                     />
                                     {dragName && dragName !== machine.name ? (
                                         <div
@@ -2779,28 +2761,53 @@ export default function PartsBoardPage() {
                                     rounded
                                 />
                             </dd>
+                            <dt>Details</dt>
+                            <dd>
+                                <div className="pb-comp-details">
+                                    {detailsEditing ? (
+                                        <InputTextarea
+                                            value={detailsInput}
+                                            onChange={(e) => setDetailsInput(e.target.value)}
+                                            placeholder="Add notes (maker, size, side, …)"
+                                            rows={3}
+                                            autoResize
+                                            maxLength={500}
+                                            className="w-full"
+                                            disabled={!selectedPart.part.partId || saving}
+                                            autoFocus
+                                        />
+                                    ) : (
+                                        <span
+                                            className={
+                                                selectedPart.part.details?.trim()
+                                                    ? 'pb-edit-details'
+                                                    : 'pb-edit-details pb-edit-details--empty'
+                                            }
+                                        >
+                                            {selectedPart.part.details?.trim() || '—'}
+                                        </span>
+                                    )}
+                                    <Button
+                                        icon={detailsEditing ? 'pi pi-check' : 'pi pi-pencil'}
+                                        rounded
+                                        text
+                                        size="small"
+                                        className="pb-comp-details__edit"
+                                        aria-label={detailsEditing ? 'Save details' : 'Edit details'}
+                                        tooltip={detailsEditing ? 'Save' : 'Edit'}
+                                        loading={saving && detailsEditing}
+                                        disabled={!selectedPart.part.partId}
+                                        onClick={() => {
+                                            if (detailsEditing) void handleSaveDetails();
+                                            else {
+                                                setDetailsInput(selectedPart.part.details ?? '');
+                                                setDetailsEditing(true);
+                                            }
+                                        }}
+                                    />
+                                </div>
+                            </dd>
                         </dl>
-                        <label className="block mb-2 text-sm font-medium">Details</label>
-                        <InputTextarea
-                            value={detailsInput}
-                            onChange={(e) => setDetailsInput(e.target.value)}
-                            placeholder="Add notes (maker, size, side, …)"
-                            rows={3}
-                            autoResize
-                            maxLength={500}
-                            className="w-full mb-2"
-                            disabled={!selectedPart.part.partId}
-                        />
-                        <div className="pb-edit-actions mb-3">
-                            <Button
-                                icon="pi pi-save"
-                                label="Save details"
-                                outlined
-                                loading={saving}
-                                onClick={() => void handleSaveDetails()}
-                                disabled={!selectedPart.part.partId}
-                            />
-                        </div>
                         <label className="block mb-2 text-sm font-medium">Runtime limit (hours)</label>
                         <InputNumber
                             value={limitInput}
@@ -2916,7 +2923,7 @@ export default function PartsBoardPage() {
             >
                 <p className="m-0 mb-3">
                     {confirmRemove?.kind === 'machine'
-                        ? `Remove ${confirmRemove.name} from this process? It can be restored from Removed machines.`
+                        ? `Hide ${confirmRemove.name} from this process? You can restore it from the eye button.`
                         : confirmRemove?.kind === 'component' && selectedPart && selectedPart.kind !== 'roller'
                           ? selectedPart.part.partType?.toUpperCase() === 'GEARBOX' && buncherBoard
                               ? `Remove gearbox from ${selectedPart.machine.name}? The unit returns to SPARE.`
@@ -2947,98 +2954,6 @@ export default function PartsBoardPage() {
 
             <Dialog
                 className="pb-add-dialog"
-                header="Add component"
-                visible={addComponentOpen}
-                style={{ width: 'min(92vw, 28rem)' }}
-                onHide={() => setAddComponentOpen(false)}
-                dismissableMask
-            >
-                <div className="flex flex-column gap-3">
-                    <div>
-                        <label className="block mb-2 text-sm font-medium">Machine</label>
-                        <Dropdown
-                            value={addMachineName}
-                            options={machineOptions}
-                            onChange={(e) => onAddMachineChange(e.value as string | null)}
-                            placeholder="Select machine"
-                            className="w-full"
-                            filter
-                            filterPlaceholder="Search machine"
-                        />
-                    </div>
-                    <div>
-                        <label className="block mb-2 text-sm font-medium">Component name</label>
-                        <InputText
-                            value={addCustomPartName}
-                            onChange={(e) => setAddCustomPartName(e.target.value)}
-                            placeholder="e.g. Bearing, Gearbox, Seal"
-                            maxLength={100}
-                            className="w-full"
-                            disabled={!addTargetMachine}
-                        />
-                        {addCustomPartName.trim() &&
-                        addTargetMachine &&
-                        isCustomPartNameTaken(addTargetMachine, addCustomPartName) ? (
-                            <small className="text-color-secondary block mt-1">
-                                This name is already registered on this machine.
-                            </small>
-                        ) : null}
-                    </div>
-                    <div>
-                        <label className="block mb-2 text-sm font-medium">Details</label>
-                        <InputTextarea
-                            value={addPartDetails}
-                            onChange={(e) => setAddPartDetails(e.target.value)}
-                            placeholder="Optional notes (maker, size, side, …)"
-                            rows={3}
-                            autoResize
-                            maxLength={500}
-                            className="w-full"
-                            disabled={!addTargetMachine}
-                        />
-                    </div>
-                    <div className="grid grid-nogutter gap-3">
-                        <div className="col-12 md:col-6">
-                            <label className="block mb-2 text-sm font-medium">Company</label>
-                            <InputText
-                                value={addCompany}
-                                onChange={(e) => setAddCompany(e.target.value)}
-                                className="w-full"
-                            />
-                        </div>
-                        <div className="col-12 md:col-6">
-                            <label className="block mb-2 text-sm font-medium">Factory</label>
-                            <InputText
-                                value={addFactory}
-                                onChange={(e) => setAddFactory(e.target.value)}
-                                className="w-full"
-                            />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block mb-2 text-sm font-medium">Runtime limit (hours)</label>
-                        <InputNumber
-                            value={addLimitHours}
-                            onValueChange={(e) => setAddLimitHours(e.value ?? 0)}
-                            min={1}
-                            className="w-full"
-                        />
-                    </div>
-                    <div className="flex gap-2 justify-content-end">
-                        <Button label="Cancel" text onClick={() => setAddComponentOpen(false)} disabled={addSaving} />
-                        <Button
-                            label="Add"
-                            icon="pi pi-check"
-                            loading={addSaving}
-                            disabled={!addMachineName || !addPartAvailable || addLimitHours < 1}
-                            onClick={() => void handleAddComponent()}
-                        />
-                    </div>
-                </div>
-            </Dialog>
-
-            <Dialog
-                className="pb-add-dialog"
                 header="Add machine"
                 visible={addMachineOpen}
                 style={{ width: 'min(92vw, 28rem)' }}
@@ -3052,7 +2967,7 @@ export default function PartsBoardPage() {
                             processCd === 'STRANDING'
                                 ? ` · ${STRAND_LINE_OPTIONS.find((p) => p.code === strandLineCd)?.label ?? strandLineCd}`
                                 : ''
-                        }. Then add components on that machine.`}
+                        }. Then open the machine settings (cog) to add components.`}
                     />
                     <div>
                         <label className="block mb-2 text-sm font-medium">Machine name</label>
@@ -3112,26 +3027,20 @@ export default function PartsBoardPage() {
 
             <Dialog
                 className="pb-add-dialog"
-                header={processCd === 'INLINE' ? 'Edit machine' : 'Edit machine name'}
+                header="Machine settings"
                 visible={renameMachineOpen}
                 style={{ width: 'min(92vw, 28rem)' }}
-                onHide={() => setRenameMachineOpen(false)}
+                onHide={() => {
+                    if (renameMachineSaving || addSaving) return;
+                    setRenameMachineOpen(false);
+                }}
                 dismissableMask
             >
                 <div className="flex flex-column gap-3">
-                    <Message
-                        severity="info"
-                        text={
-                            processCd === 'INLINE'
-                                ? 'Name is the card label. Machine code is stored as entered and used to match Run/Stop.'
-                                : 'Renames this machine on the board and its components. Use the plant name (e.g. 12X13HSP) if you want Run/Stop to match.'
-                        }
-                    />
                     <div>
+                        <div className="font-semibold text-sm mb-2">Name</div>
                         <label className="block mb-2 text-sm font-medium">Current name</label>
-                        <InputText value={renameMachineFrom} className="w-full" disabled />
-                    </div>
-                    <div>
+                        <InputText value={renameMachineFrom} className="w-full mb-2" disabled />
                         <label className="block mb-2 text-sm font-medium">New name</label>
                         <InputText
                             value={renameMachineInput}
@@ -3156,16 +3065,11 @@ export default function PartsBoardPage() {
                     ) : null}
                     <div className="flex gap-2 justify-content-end">
                         <Button
-                            label="Cancel"
-                            text
-                            onClick={() => setRenameMachineOpen(false)}
-                            disabled={renameMachineSaving}
-                        />
-                        <Button
-                            label="Save"
+                            label="Save name"
                             icon="pi pi-check"
                             loading={renameMachineSaving}
                             disabled={
+                                addSaving ||
                                 !renameMachineInput.trim() ||
                                 (renameMachineInput.trim() === renameMachineFrom.trim() &&
                                     (processCd !== 'INLINE' ||
@@ -3174,12 +3078,78 @@ export default function PartsBoardPage() {
                             onClick={() => void handleRenameMachine()}
                         />
                     </div>
+                    <div className="pb-settings-add">
+                        <div className="font-semibold text-sm mb-2">Add component</div>
+                        <label className="block mb-2 text-sm font-medium">Machine</label>
+                        <InputText value={addMachineName ?? ''} className="w-full mb-2" disabled />
+                        <label className="block mb-2 text-sm font-medium">Component name</label>
+                        <InputText
+                            value={addCustomPartName}
+                            onChange={(e) => setAddCustomPartName(e.target.value)}
+                            placeholder="e.g. Bearing, Gearbox, Seal"
+                            maxLength={100}
+                            className="w-full mb-2"
+                            disabled={!addTargetMachine || addSaving}
+                        />
+                        {addCustomPartName.trim() &&
+                        addTargetMachine &&
+                        isCustomPartNameTaken(addTargetMachine, addCustomPartName) ? (
+                            <small className="text-color-secondary block mb-2">
+                                This name is already registered on this machine.
+                            </small>
+                        ) : null}
+                        <label className="block mb-2 text-sm font-medium">Details</label>
+                        <InputTextarea
+                            value={addPartDetails}
+                            onChange={(e) => setAddPartDetails(e.target.value)}
+                            placeholder="Optional notes (maker, size, side, …)"
+                            rows={3}
+                            autoResize
+                            maxLength={500}
+                            className="w-full mb-2"
+                            disabled={!addTargetMachine || addSaving}
+                        />
+                        <div className="grid grid-nogutter gap-3 mb-2">
+                            <div className="col-12 md:col-6">
+                                <label className="block mb-2 text-sm font-medium">Company</label>
+                                <InputText
+                                    value={addCompany}
+                                    onChange={(e) => setAddCompany(e.target.value)}
+                                    className="w-full"
+                                />
+                            </div>
+                            <div className="col-12 md:col-6">
+                                <label className="block mb-2 text-sm font-medium">Factory</label>
+                                <InputText
+                                    value={addFactory}
+                                    onChange={(e) => setAddFactory(e.target.value)}
+                                    className="w-full"
+                                />
+                            </div>
+                        </div>
+                        <label className="block mb-2 text-sm font-medium">Runtime limit (hours)</label>
+                        <InputNumber
+                            value={addLimitHours}
+                            onValueChange={(e) => setAddLimitHours(e.value ?? 0)}
+                            min={1}
+                            className="w-full mb-2"
+                        />
+                        <div className="flex gap-2 justify-content-end">
+                            <Button
+                                label="Add component"
+                                icon="pi pi-plus"
+                                loading={addSaving}
+                                disabled={!addMachineName || !addPartAvailable || addLimitHours < 1 || renameMachineSaving}
+                                onClick={() => void handleAddComponent()}
+                            />
+                        </div>
+                    </div>
                 </div>
             </Dialog>
 
             <Dialog
                 className="pb-add-dialog"
-                header="Removed machines"
+                header="Machines"
                 visible={hiddenMachinesOpen}
                 style={{ width: 'min(92vw, 28rem)' }}
                 onHide={() => setHiddenMachinesOpen(false)}
@@ -3188,14 +3158,39 @@ export default function PartsBoardPage() {
                 <div className="flex flex-column gap-3">
                     <Message
                         severity="info"
-                        text="Machines removed from this process only. Restore to show them on the board again."
+                        text="Hide a machine from this process, or restore one that was removed."
                     />
+                    <div>
+                        <div className="font-semibold text-sm mb-2">On this board</div>
+                        {sortedMachines.length === 0 ? (
+                            <div className="text-color-secondary text-sm">No machines on this board.</div>
+                        ) : (
+                            <ul className="pb-hidden-list">
+                                {sortedMachines.map((m) => (
+                                    <li key={m.name} className="pb-hidden-list__row">
+                                        <span className="pb-hidden-list__name">{m.name}</span>
+                                        <Button
+                                            label="Hide"
+                                            icon="pi pi-eye-slash"
+                                            size="small"
+                                            text
+                                            severity="danger"
+                                            disabled={hideMachineSaving}
+                                            onClick={() => setConfirmRemove({ kind: 'machine', name: m.name })}
+                                        />
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                    <div>
+                        <div className="font-semibold text-sm mb-2">Removed</div>
                     {hiddenMachinesLoading ? (
                         <div className="flex justify-content-center p-3">
                             <ProgressSpinner style={{ width: '2.5rem', height: '2.5rem' }} />
                         </div>
                     ) : hiddenMachines.length === 0 ? (
-                        <div className="text-color-secondary text-sm">No removed machines for this process.</div>
+                        <div className="text-color-secondary text-sm">None</div>
                     ) : (
                         <ul className="pb-hidden-list">
                             {hiddenMachines.map((m) => (
@@ -3213,6 +3208,7 @@ export default function PartsBoardPage() {
                             ))}
                         </ul>
                     )}
+                    </div>
                 </div>
             </Dialog>
 
