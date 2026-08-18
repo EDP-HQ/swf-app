@@ -13,6 +13,14 @@ export type CmMachineRow = {
     running: boolean;
 };
 
+/** INLINE takeup/plant code: IN0001 or LI0001 → IN0001. */
+export function normalizeInlineMachineCd(raw: string): string | null {
+    const v = raw.trim().toUpperCase();
+    const m = v.match(/^(IN|LI)(\d{4})$/);
+    if (!m) return null;
+    return `IN${m[2]}`;
+}
+
 function directApiBase(): string {
     if (typeof process === 'undefined') return '';
     const v = process.env.NEXT_PUBLIC_SWF_API_URL;
@@ -110,6 +118,7 @@ export async function insertCmMachine(
         processCd: ProcessCd;
         lineCd?: StrandLineCd | null;
         machineName: string;
+        machineCd?: string;
         company?: string;
         factory?: string;
     },
@@ -128,7 +137,8 @@ export async function insertCmMachine(
                     Factory: input.factory ?? 'F002',
                     ProcessCd: input.processCd,
                     LineCd: input.lineCd ?? null,
-                    MachineNm: input.machineName.trim()
+                    MachineNm: input.machineName.trim(),
+                    MachineCd: input.machineCd?.trim() || null
                 }
             })
         });
@@ -153,6 +163,7 @@ export async function renameCmMachine(
         lineCd?: StrandLineCd | null;
         oldMachineName: string;
         newMachineName: string;
+        machineCd?: string | null;
         company?: string;
         factory?: string;
     },
@@ -172,7 +183,8 @@ export async function renameCmMachine(
                     ProcessCd: input.processCd,
                     LineCd: input.lineCd ?? null,
                     OldMachineNm: input.oldMachineName.trim(),
-                    NewMachineNm: input.newMachineName.trim()
+                    NewMachineNm: input.newMachineName.trim(),
+                    MachineCd: input.machineCd != null ? input.machineCd.trim() : null
                 }
             })
         });

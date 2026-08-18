@@ -69,7 +69,7 @@ import {
     type CardSize,
     type DropWhere
 } from '@/lib/roller-monitoring/boardLayout';
-import { fetchCmMachines, insertCmMachine, renameCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
+import { fetchCmMachines, insertCmMachine, normalizeInlineMachineCd, renameCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
 import {
     fetchGearboxAssets,
     gearboxLabel,
@@ -964,10 +964,13 @@ export default function PartsBoardPage() {
     const [addMachineNameInput, setAddMachineNameInput] = useState('');
     const [addMachineCompany, setAddMachineCompany] = useState(COMPONENT_DEFAULT_COMPANY);
     const [addMachineFactory, setAddMachineFactory] = useState(COMPONENT_DEFAULT_FACTORY);
+    const [addMachineCodeInput, setAddMachineCodeInput] = useState('');
     const [renameMachineOpen, setRenameMachineOpen] = useState(false);
     const [renameMachineSaving, setRenameMachineSaving] = useState(false);
     const [renameMachineFrom, setRenameMachineFrom] = useState('');
     const [renameMachineInput, setRenameMachineInput] = useState('');
+    const [renameMachineCodeFrom, setRenameMachineCodeFrom] = useState('');
+    const [renameMachineCodeInput, setRenameMachineCodeInput] = useState('');
     const [hiddenMachinesOpen, setHiddenMachinesOpen] = useState(false);
     const [hiddenMachines, setHiddenMachines] = useState<{ machineName: string; company: string; factory: string }[]>(
         []
@@ -1902,26 +1905,44 @@ export default function PartsBoardPage() {
 
     const openAddMachine = () => {
         setAddMachineNameInput('');
+        setAddMachineCodeInput('');
         setAddMachineCompany(COMPONENT_DEFAULT_COMPANY);
         setAddMachineFactory(COMPONENT_DEFAULT_FACTORY);
         setAddMachineOpen(true);
     };
 
-    const openRenameMachine = (name: string) => {
-        setRenameMachineFrom(name);
-        setRenameMachineInput(name);
+    const openRenameMachine = (machine: MachineDashboard) => {
+        setRenameMachineFrom(machine.name);
+        setRenameMachineInput(machine.name);
+        setRenameMachineCodeFrom(machine.machineNo || '');
+        setRenameMachineCodeInput(machine.machineNo || '');
         setRenameMachineOpen(true);
     };
 
     const handleRenameMachine = async () => {
         const oldName = renameMachineFrom.trim();
         const newName = renameMachineInput.trim();
+        const newCode = renameMachineCodeInput.trim();
+        const oldCode = renameMachineCodeFrom.trim();
         if (!oldName) return;
         if (!newName) {
             toast.current?.show({ severity: 'warn', summary: 'Machine name is required', life: 3000 });
             return;
         }
-        if (newName === oldName) {
+        if (processCd === 'INLINE' && newCode && !normalizeInlineMachineCd(newCode)) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Machine code must be INnnnn or LInnnn',
+                detail: 'Example: IN0012 or LI0012',
+                life: 4000
+            });
+            return;
+        }
+        const nameChanged = newName !== oldName;
+        const codeChanged =
+            processCd === 'INLINE' &&
+            (normalizeInlineMachineCd(newCode) || '') !== (normalizeInlineMachineCd(oldCode) || '');
+        if (!nameChanged && !codeChanged) {
             setRenameMachineOpen(false);
             return;
         }
@@ -1938,7 +1959,8 @@ export default function PartsBoardPage() {
                     processCd,
                     lineCd,
                     oldMachineName: oldName,
-                    newMachineName: newName
+                    newMachineName: newName,
+                    machineCd: processCd === 'INLINE' ? newCode : null
                 },
                 dbTarget
             );
@@ -1960,8 +1982,8 @@ export default function PartsBoardPage() {
 
             toast.current?.show({
                 severity: 'success',
-                summary: 'Machine renamed',
-                detail: `${oldName} → ${newName}`,
+                summary: nameChanged ? 'Machine renamed' : 'Machine updated',
+                detail: nameChanged ? `${oldName} → ${newName}` : newCode || 'Code cleared',
                 life: 4000
             });
             setRenameMachineOpen(false);
@@ -1980,8 +2002,18 @@ export default function PartsBoardPage() {
 
     const handleAddMachine = async () => {
         const name = addMachineNameInput.trim();
+        const code = addMachineCodeInput.trim();
         if (!name) {
             toast.current?.show({ severity: 'warn', summary: 'Machine name is required', life: 3000 });
+            return;
+        }
+        if (processCd === 'INLINE' && !normalizeInlineMachineCd(code)) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Machine code is required',
+                detail: 'Enter takeup/plant code INnnnn or LInnnn (e.g. IN0012).',
+                life: 4000
+            });
             return;
         }
         if (processCd === 'STRANDING' && !strandLineCd) {
@@ -1996,6 +2028,7 @@ export default function PartsBoardPage() {
                     processCd,
                     lineCd: processCd === 'STRANDING' ? strandLineCd : null,
                     machineName: name,
+                    machineCd: processCd === 'INLINE' ? code : undefined,
                     company: addMachineCompany.trim() || COMPONENT_DEFAULT_COMPANY,
                     factory: addMachineFactory.trim() || COMPONENT_DEFAULT_FACTORY
                 },
@@ -2505,7 +2538,7 @@ export default function PartsBoardPage() {
                                             setDropWhere(null);
                                         }}
                                         onResize={(size) => handleCardResize(machine.name, size)}
-                                        onRenameMachine={() => openRenameMachine(machine.name)}
+                                        onRenameMachine={() => openRenameMachine(machine)}
                                         onHideMachine={() =>
                                             setConfirmRemove({ kind: 'machine', name: machine.name })
                                         }
@@ -3041,6 +3074,18 @@ export default function PartsBoardPage() {
                             maxLength={100}
                         />
                     </div>
+                    {processCd === 'INLINE' ? (
+                        <div>
+                            <label className="block mb-2 text-sm font-medium">Machine code</label>
+                            <InputText
+                                value={addMachineCodeInput}
+                                onChange={(e) => setAddMachineCodeInput(e.target.value)}
+                                placeholder="IN0012 or LI0012"
+                                className="w-full"
+                                maxLength={20}
+                            />
+                        </div>
+                    ) : null}
                     <div className="grid grid-nogutter gap-3">
                         <div className="col-12 md:col-6">
                             <label className="block mb-2 text-sm font-medium">Company</label>
@@ -3065,7 +3110,10 @@ export default function PartsBoardPage() {
                             label="Add"
                             icon="pi pi-check"
                             loading={addMachineSaving}
-                            disabled={!addMachineNameInput.trim()}
+                            disabled={
+                                !addMachineNameInput.trim() ||
+                                (processCd === 'INLINE' && !normalizeInlineMachineCd(addMachineCodeInput))
+                            }
                             onClick={() => void handleAddMachine()}
                         />
                     </div>
@@ -3074,7 +3122,7 @@ export default function PartsBoardPage() {
 
             <Dialog
                 className="pb-add-dialog"
-                header="Edit machine name"
+                header={processCd === 'INLINE' ? 'Edit machine' : 'Edit machine name'}
                 visible={renameMachineOpen}
                 style={{ width: 'min(92vw, 28rem)' }}
                 onHide={() => setRenameMachineOpen(false)}
@@ -3083,7 +3131,11 @@ export default function PartsBoardPage() {
                 <div className="flex flex-column gap-3">
                     <Message
                         severity="info"
-                        text="Renames this machine on the board and its components. Use the plant name (e.g. 12X13HSP) if you want Run/Stop to match."
+                        text={
+                            processCd === 'INLINE'
+                                ? 'Name is the card label. Machine code (IN0001 or LI0001) links Run/Stop from takeup.'
+                                : 'Renames this machine on the board and its components. Use the plant name (e.g. 12X13HSP) if you want Run/Stop to match.'
+                        }
                     />
                     <div>
                         <label className="block mb-2 text-sm font-medium">Current name</label>
@@ -3100,6 +3152,18 @@ export default function PartsBoardPage() {
                             autoFocus
                         />
                     </div>
+                    {processCd === 'INLINE' ? (
+                        <div>
+                            <label className="block mb-2 text-sm font-medium">Machine code</label>
+                            <InputText
+                                value={renameMachineCodeInput}
+                                onChange={(e) => setRenameMachineCodeInput(e.target.value)}
+                                placeholder="IN0012 or LI0012"
+                                className="w-full"
+                                maxLength={20}
+                            />
+                        </div>
+                    ) : null}
                     <div className="flex gap-2 justify-content-end">
                         <Button
                             label="Cancel"
@@ -3111,7 +3175,16 @@ export default function PartsBoardPage() {
                             label="Save"
                             icon="pi pi-check"
                             loading={renameMachineSaving}
-                            disabled={!renameMachineInput.trim() || renameMachineInput.trim() === renameMachineFrom.trim()}
+                            disabled={
+                                !renameMachineInput.trim() ||
+                                (processCd === 'INLINE' &&
+                                    renameMachineCodeInput.trim() !== '' &&
+                                    !normalizeInlineMachineCd(renameMachineCodeInput)) ||
+                                (renameMachineInput.trim() === renameMachineFrom.trim() &&
+                                    (processCd !== 'INLINE' ||
+                                        (normalizeInlineMachineCd(renameMachineCodeInput) || '') ===
+                                            (normalizeInlineMachineCd(renameMachineCodeFrom) || '')))
+                            }
                             onClick={() => void handleRenameMachine()}
                         />
                     </div>

@@ -71,16 +71,23 @@ function buildOnoffMap(rows: Record<string, unknown>[]) {
         setHit(rowStr(row, 'MachineName', 'MACHINE_NAME', 'MACHINE_NM'), hit);
         setHit(rowStr(row, 'MACHINE_DESC'), hit);
         setHit(rowStr(row, 'MACHINE_DESC_SHORT'), hit);
+        if (hit.machineNo) {
+            setHit(hit.machineNo, hit);
+            setHit(hit.machineNo.toUpperCase(), hit);
+        }
     }
     return map;
 }
 
-/** Overlay plant Run/Stop onto registry machines (Drawing, Closing, …). */
+/** Overlay plant Run/Stop onto registry machines (Drawing, Closing, INLINE, …). */
 export function applyOnoffToMachines(machines: MachineDashboard[], onoff: unknown): MachineDashboard[] {
     const onoffMap = buildOnoffMap(asRecordArray(onoff));
     if (!onoffMap.size) return machines;
     return machines.map((m) => {
-        const hit = onoffMap.get(m.name) ?? onoffMap.get(normalizeOnoffName(m.name));
+        const hit =
+            onoffMap.get(m.name) ??
+            onoffMap.get(normalizeOnoffName(m.name)) ??
+            (m.machineNo ? onoffMap.get(m.machineNo) ?? onoffMap.get(m.machineNo.toUpperCase()) : undefined);
         if (!hit) return m;
         return recountMachine({
             ...m,
