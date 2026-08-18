@@ -2512,11 +2512,30 @@ export default function PartsBoardPage() {
                 <div className="pb-loading">
                     <ProgressSpinner />
                 </div>
-            ) : visibleMachines.length === 0 ? (
+            ) : visibleMachines.length === 0 && lineMachines.length === 0 ? (
                 <div className="pb-empty">
                     No machines registered for this process yet. Click Add machine to key one in.
                 </div>
             ) : (
+                <>
+                    {lineMachines.map((machine) => (
+                        <div key={machine.name} className="pb-line-rail">
+                            <MachineCard
+                                machine={machine}
+                                syncEpochMs={syncEpochMs}
+                                nowMs={nowMs}
+                                search={searchLower}
+                                componentsOnly={!buncherBoard}
+                                lineLayout
+                                onOpenFullscreen={() => openMachine(machine.name)}
+                                onOpenRoller={(lr) => openRollerEdit(machine, lr.roller)}
+                                onOpenFixed={(key, part) => openFixedEdit(machine, key, part)}
+                                onOpenCustom={(part) => openCustomEdit(machine, part)}
+                                onOpenSettings={() => openMachineSettings(machine)}
+                            />
+                        </div>
+                    ))}
+                    {visibleMachines.length > 0 ? (
                 <div className={`pb-machine-grid${dragName ? ' pb-machine-grid--dragging' : ''}`}>
                     {visibleColumns.map((col) => (
                         <div key={col.map((m) => m.name).join('|')} className="pb-machine-col">
@@ -2569,6 +2588,8 @@ export default function PartsBoardPage() {
                         </div>
                     ))}
                 </div>
+                    ) : null}
+                </>
             )}
 
             <Dialog
@@ -3017,16 +3038,36 @@ export default function PartsBoardPage() {
                         />
                     </div>
                     {processCd === 'INLINE' ? (
-                        <div>
-                            <label className="block mb-2 text-sm font-medium">Machine code</label>
-                            <InputText
-                                value={addMachineCodeInput}
-                                onChange={(e) => setAddMachineCodeInput(e.target.value)}
-                                placeholder="Machine code"
-                                className="w-full"
-                                maxLength={50}
-                            />
-                        </div>
+                        <>
+                            <div className="flex align-items-center gap-2">
+                                <Checkbox
+                                    inputId="add-machine-line"
+                                    checked={addMachineLineYn}
+                                    disabled={machines.some((m) => m.isLineCard)}
+                                    onChange={(e) => setAddMachineLineYn(!!e.checked)}
+                                />
+                                <label htmlFor="add-machine-line" className="text-sm">
+                                    Shared line card (main INLINE line)
+                                </label>
+                            </div>
+                            {addMachineLineYn ? (
+                                <Message
+                                    severity="info"
+                                    text="No takeup code. Components run when any coded INLINE machine is running. Shown as a horizontal bar at the top."
+                                />
+                            ) : (
+                                <div>
+                                    <label className="block mb-2 text-sm font-medium">Machine code</label>
+                                    <InputText
+                                        value={addMachineCodeInput}
+                                        onChange={(e) => setAddMachineCodeInput(e.target.value)}
+                                        placeholder="Machine code"
+                                        className="w-full"
+                                        maxLength={50}
+                                    />
+                                </div>
+                            )}
+                        </>
                     ) : null}
                     <div className="grid grid-nogutter gap-3">
                         <div className="col-12 md:col-6">
@@ -3054,7 +3095,7 @@ export default function PartsBoardPage() {
                             loading={addMachineSaving}
                             disabled={
                                 !addMachineNameInput.trim() ||
-                                (processCd === 'INLINE' && !addMachineCodeInput.trim())
+                                (processCd === 'INLINE' && !addMachineLineYn && !addMachineCodeInput.trim())
                             }
                             onClick={() => void handleAddMachine()}
                         />
@@ -3088,7 +3129,7 @@ export default function PartsBoardPage() {
                             autoFocus
                         />
                     </div>
-                    {processCd === 'INLINE' ? (
+                    {processCd === 'INLINE' && !machines.find((m) => m.name === renameMachineFrom)?.isLineCard ? (
                         <div>
                             <label className="block mb-2 text-sm font-medium">Machine code</label>
                             <InputText
@@ -3110,6 +3151,7 @@ export default function PartsBoardPage() {
                                 !renameMachineInput.trim() ||
                                 (renameMachineInput.trim() === renameMachineFrom.trim() &&
                                     (processCd !== 'INLINE' ||
+                                        !!machines.find((m) => m.name === renameMachineFrom)?.isLineCard ||
                                         renameMachineCodeInput.trim() === renameMachineCodeFrom.trim()))
                             }
                             onClick={() => void handleRenameMachine()}

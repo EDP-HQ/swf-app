@@ -73,6 +73,11 @@
     min-height: 12rem;
 }
 
+.pb-line-rail {
+    flex-shrink: 0;
+    width: 100%;
+}
+
 .pb-machine-grid {
     flex: 1;
     min-height: 0;
@@ -153,6 +158,82 @@
 .pb-machine--run { border-left: 4px solid var(--pb-run); }
 .pb-machine--idle { border-left: 4px solid var(--pb-stop); }
 .pb-machine--unknown { border-left: 4px solid var(--pb-due); }
+
+.pb-machine--line {
+    width: 100%;
+    min-height: 0;
+    height: auto;
+    flex-direction: row;
+    align-items: stretch;
+    border-top-width: 5px;
+}
+
+.pb-machine--line.pb-machine--run { border-top-color: var(--pb-run); }
+.pb-machine--line.pb-machine--idle { border-top-color: var(--pb-stop); }
+.pb-machine--line.pb-machine--unknown { border-top-color: var(--pb-due); }
+
+.pb-machine--line .pb-machine__head {
+    flex: 0 0 13rem;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0.35rem;
+    border-right: 1px solid var(--surface-border);
+}
+
+.pb-machine--line .pb-machine__name {
+    flex: none;
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.pb-machine__line-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.08rem 0.4rem;
+    border-radius: 999px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--primary-color);
+    background: color-mix(in srgb, var(--primary-color) 14%, var(--surface-0));
+}
+
+.pb-machine--line .pb-machine__head-actions {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+.pb-machine--line .pb-machine__body {
+    flex: 1;
+    min-width: 0;
+}
+
+.pb-machine--line .pb-machine__fixed {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-bottom: none;
+    align-items: stretch;
+}
+
+.pb-machine--line .pb-machine__fixed > .pb-comp-tile:first-child {
+    grid-column: auto;
+}
+
+.pb-machine--line .pb-comp-tile {
+    flex: 0 0 auto;
+    width: 9.25rem;
+}
+
+.pb-machine--line .pb-machine__empty-parts {
+    margin: 0.15rem 0;
+}
+
 .pb-machine--dragging { opacity: 0.55; }
 .pb-machine--drop {
     border-color: var(--primary-color);
@@ -957,6 +1038,30 @@
         flex: none;
         width: 100%;
         min-height: 0;
+    }
+
+    .pb-machine--line {
+        flex-direction: column;
+    }
+
+    .pb-machine--line .pb-machine__head {
+        flex: none;
+        width: 100%;
+        flex-direction: row;
+        align-items: center;
+        border-right: none;
+        border-bottom: 1px solid var(--surface-border);
+    }
+
+    .pb-machine--line .pb-machine__head-actions {
+        width: auto;
+        margin-left: auto;
+    }
+
+    .pb-machine--line .pb-comp-tile {
+        width: calc(50% - 0.2rem);
+        min-width: 0;
+        flex: 1 1 calc(50% - 0.2rem);
     }
 
     .pb-machine__head {
