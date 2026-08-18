@@ -47,15 +47,21 @@ function parseErrorMessage(body: unknown, status: number): string {
 function mapMachine(row: Record<string, unknown>): CmMachineRow {
     const line = rowStr(row, 'LINE_CD');
     const useYn = rowStr(row, 'USE_YN').toUpperCase();
+    const processCd = rowStr(row, 'PROCESS_CD').toUpperCase() as ProcessCd;
+    // INLINE code is only TB_CM_MACHINE.MACHINE_CD — never plant/takeup MACHINE_NO.
+    const machineNo =
+        processCd === 'INLINE'
+            ? rowStr(row, 'MACHINE_CD')
+            : rowStr(row, 'MACHINE_NO', 'MACHINE_CD');
     return {
         company: rowStr(row, 'COMPANY'),
         factory: rowStr(row, 'FACTORY'),
-        processCd: rowStr(row, 'PROCESS_CD').toUpperCase() as ProcessCd,
+        processCd,
         lineCd: line ? (line.toUpperCase() as StrandLineCd) : null,
         machineName: rowStr(row, 'MACHINE_NM', 'MACHINE_NAME'),
         visible: useYn !== 'N',
-        machineNo: rowStr(row, 'MACHINE_NO', 'MACHINE_CD'),
-        running: !!rowStr(row, 'MACHINE_NO', 'MACHINE_CD') && rowStr(row, 'RUN_DN_TYPE') === '01'
+        machineNo,
+        running: !!machineNo && rowStr(row, 'RUN_DN_TYPE') === '01'
     };
 }
 

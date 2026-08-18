@@ -1066,7 +1066,9 @@ export default function PartsBoardPage() {
             if (useBuncher && rollerData) {
                 incoming = applyRollersToRegistryMachines(incoming, rollerData.machines);
             } else if (plantOnoff) {
-                incoming = applyOnoffToMachines(incoming, plantOnoff);
+                incoming = applyOnoffToMachines(incoming, plantOnoff, {
+                    matchByCodeOnly: activeProcess === 'INLINE'
+                });
             }
 
             const prev = machinesRef.current;
