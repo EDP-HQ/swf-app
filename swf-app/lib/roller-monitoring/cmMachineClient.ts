@@ -122,7 +122,6 @@ export async function insertCmMachine(
         lineCd?: StrandLineCd | null;
         machineName: string;
         machineCd?: string;
-        lineYn?: boolean;
         company?: string;
         factory?: string;
     },
@@ -142,8 +141,7 @@ export async function insertCmMachine(
                     ProcessCd: input.processCd,
                     LineCd: input.lineCd ?? null,
                     MachineNm: input.machineName.trim(),
-                    MachineCd: input.lineYn ? null : input.machineCd?.trim() || null,
-                    LineYn: input.lineYn ? 'Y' : 'N'
+                    MachineCd: input.machineCd?.trim() || null
                 }
             })
         });

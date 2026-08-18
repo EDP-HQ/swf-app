@@ -957,7 +957,6 @@ export default function PartsBoardPage() {
     const [addMachineCompany, setAddMachineCompany] = useState(COMPONENT_DEFAULT_COMPANY);
     const [addMachineFactory, setAddMachineFactory] = useState(COMPONENT_DEFAULT_FACTORY);
     const [addMachineCodeInput, setAddMachineCodeInput] = useState('');
-    const [addMachineLineYn, setAddMachineLineYn] = useState(false);
     const [renameMachineOpen, setRenameMachineOpen] = useState(false);
     const [renameMachineSaving, setRenameMachineSaving] = useState(false);
     const [renameMachineFrom, setRenameMachineFrom] = useState('');
@@ -1929,7 +1928,6 @@ export default function PartsBoardPage() {
     const openAddMachine = () => {
         setAddMachineNameInput('');
         setAddMachineCodeInput('');
-        setAddMachineLineYn(false);
         setAddMachineCompany(COMPONENT_DEFAULT_COMPANY);
         setAddMachineFactory(COMPONENT_DEFAULT_FACTORY);
         setAddMachineOpen(true);
@@ -2027,7 +2025,7 @@ export default function PartsBoardPage() {
             toast.current?.show({ severity: 'warn', summary: 'Machine name is required', life: 3000 });
             return;
         }
-        if (processCd === 'INLINE' && !addMachineLineYn && !code) {
+        if (processCd === 'INLINE' && !code) {
             toast.current?.show({
                 severity: 'warn',
                 summary: 'Machine code is required',
@@ -2047,8 +2045,7 @@ export default function PartsBoardPage() {
                     processCd,
                     lineCd: processCd === 'STRANDING' ? strandLineCd : null,
                     machineName: name,
-                    machineCd: processCd === 'INLINE' && !addMachineLineYn ? code : undefined,
-                    lineYn: processCd === 'INLINE' && addMachineLineYn,
+                    machineCd: processCd === 'INLINE' ? code : undefined,
                     company: addMachineCompany.trim() || COMPONENT_DEFAULT_COMPANY,
                     factory: addMachineFactory.trim() || COMPONENT_DEFAULT_FACTORY
                 },
@@ -3038,36 +3035,16 @@ export default function PartsBoardPage() {
                         />
                     </div>
                     {processCd === 'INLINE' ? (
-                        <>
-                            <div className="flex align-items-center gap-2">
-                                <Checkbox
-                                    inputId="add-machine-line"
-                                    checked={addMachineLineYn}
-                                    disabled={machines.some((m) => m.isLineCard)}
-                                    onChange={(e) => setAddMachineLineYn(!!e.checked)}
-                                />
-                                <label htmlFor="add-machine-line" className="text-sm">
-                                    Shared line card (main INLINE line)
-                                </label>
-                            </div>
-                            {addMachineLineYn ? (
-                                <Message
-                                    severity="info"
-                                    text="No takeup code. Components run when any coded INLINE machine is running. Shown as a horizontal bar at the top."
-                                />
-                            ) : (
-                                <div>
-                                    <label className="block mb-2 text-sm font-medium">Machine code</label>
-                                    <InputText
-                                        value={addMachineCodeInput}
-                                        onChange={(e) => setAddMachineCodeInput(e.target.value)}
-                                        placeholder="Machine code"
-                                        className="w-full"
-                                        maxLength={50}
-                                    />
-                                </div>
-                            )}
-                        </>
+                        <div>
+                            <label className="block mb-2 text-sm font-medium">Machine code</label>
+                            <InputText
+                                value={addMachineCodeInput}
+                                onChange={(e) => setAddMachineCodeInput(e.target.value)}
+                                placeholder="Machine code"
+                                className="w-full"
+                                maxLength={50}
+                            />
+                        </div>
                     ) : null}
                     <div className="grid grid-nogutter gap-3">
                         <div className="col-12 md:col-6">
@@ -3095,7 +3072,7 @@ export default function PartsBoardPage() {
                             loading={addMachineSaving}
                             disabled={
                                 !addMachineNameInput.trim() ||
-                                (processCd === 'INLINE' && !addMachineLineYn && !addMachineCodeInput.trim())
+                                (processCd === 'INLINE' && !addMachineCodeInput.trim())
                             }
                             onClick={() => void handleAddMachine()}
                         />
@@ -3241,11 +3218,11 @@ export default function PartsBoardPage() {
                     />
                     <div>
                         <div className="font-semibold text-sm mb-2">On this board</div>
-                        {sortedMachines.length === 0 ? (
-                            <div className="text-color-secondary text-sm">No machines on this board.</div>
+                        {sortedMachines.filter((m) => !m.isLineCard).length === 0 ? (
+                            <div className="text-color-secondary text-sm">No takeup machines on this board.</div>
                         ) : (
                             <ul className="pb-hidden-list">
-                                {sortedMachines.map((m) => (
+                                {sortedMachines.filter((m) => !m.isLineCard).map((m) => (
                                     <li key={m.name} className="pb-hidden-list__row">
                                         <span className="pb-hidden-list__name">{m.name}</span>
                                         <Button
