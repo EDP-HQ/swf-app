@@ -1,0 +1,122 @@
+.ba-widget-root {
+    min-height: 100vh;
+    background: #f8fafc;
+}
+
+.ba-widget {
+    padding: 0.65rem 0.75rem 0.8rem;
+    font-family: inherit;
+}
+
+.ba-widget__head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    margin-bottom: 0.55rem;
+}
+
+.ba-widget__title {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #991b1b;
+}
+
+.ba-widget__sub {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #64748b;
+}
+
+.ba-widget__count {
+    margin-left: auto;
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: #b91c1c;
+    font-variant-numeric: tabular-nums;
+}
+
+.ba-widget__empty,
+.ba-widget__error {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.ba-widget__error {
+    color: #b91c1c;
+}
+
+.ba-widget__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.ba-widget__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr) auto;
+    grid-template-rows: auto auto;
+    column-gap: 0.4rem;
+    row-gap: 0.1rem;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid color-mix(in srgb, #ef4444 28%, #e2e8f0);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.ba-widget__machine {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ba-widget__part {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #0f172a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ba-widget__pct {
+    grid-row: 1 / span 2;
+    align-self: center;
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: #dc2626;
+    font-variant-numeric: tabular-nums;
+}
+
+.ba-widget__rt {
+    grid-column: 1 / 3;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    font-variant-numeric: tabular-nums;
+}
+
+.ba-widget__more {
+    margin-top: 0.45rem;
+    appearance: none;
+    border: 1px dashed color-mix(in srgb, #ef4444 45%, #cbd5e1);
+    border-radius: 999px;
+    padding: 0.25rem 0.7rem;
+    background: transparent;
+    color: #991b1b;
+    font-size: 0.75rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.ba-widget__more:hover {
+    background: #fff;
+    border-style: solid;
+}
