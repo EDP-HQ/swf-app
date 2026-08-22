@@ -1,6 +1,6 @@
 import { liveFixedPartRuntimeHours, MACHINE_FIXED_PART_KEYS } from './machineParts';
 import { liveRollerRuntimeHours } from './machineRollers';
-import { computeRollerStatus, usagePct } from './rollerStatus';
+import { computeRollerStatus, needsAttentionStatus, usagePct } from './rollerStatus';
 import type { MachineDashboard } from './types';
 
 export type AttentionItem = {
@@ -12,7 +12,7 @@ export type AttentionItem = {
     pct: number;
 };
 
-/** Overdue parts/rollers — same rules as the parts-board Need attention list. */
+/** Due + overdue parts/rollers — same rules as the parts-board Need attention list. */
 export function collectAttentionItems(
     machines: MachineDashboard[],
     syncEpochMs: number,
@@ -25,7 +25,7 @@ export function collectAttentionItems(
             const part = machine[partKey];
             if (!part.partId) continue;
             const runtimeHours = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
-            if (computeRollerStatus(runtimeHours, part.limitHours) !== 'Overdue') continue;
+            if (!needsAttentionStatus(computeRollerStatus(runtimeHours, part.limitHours))) continue;
             items.push({
                 key: `${machine.name}:fixed:${partKey}:${part.partId}`,
                 machineName: machine.name,
@@ -38,7 +38,7 @@ export function collectAttentionItems(
         for (const part of machine.extraParts ?? []) {
             if (!part.partId) continue;
             const runtimeHours = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
-            if (computeRollerStatus(runtimeHours, part.limitHours) !== 'Overdue') continue;
+            if (!needsAttentionStatus(computeRollerStatus(runtimeHours, part.limitHours))) continue;
             items.push({
                 key: `${machine.name}:custom:${part.partId}`,
                 machineName: machine.name,
@@ -51,7 +51,7 @@ export function collectAttentionItems(
         if (!includeRollers) continue;
         for (const roller of machine.rollers) {
             const runtimeHours = liveRollerRuntimeHours(roller, machine, syncEpochMs, nowMs);
-            if (computeRollerStatus(runtimeHours, roller.limitHours) !== 'Overdue') continue;
+            if (!needsAttentionStatus(computeRollerStatus(runtimeHours, roller.limitHours))) continue;
             items.push({
                 key: `${machine.name}:roller:${roller.binLocation || roller.rollerId || roller.displayName}`,
                 machineName: machine.name,

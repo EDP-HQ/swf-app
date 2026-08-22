@@ -17,7 +17,7 @@ import { TabPanel, TabView } from 'primereact/tabview';
 import { Tag } from 'primereact/tag';
 import { Toast } from 'primereact/toast';
 import { Tooltip } from 'primereact/tooltip';
-import { CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS, GEARBOX_DEFAULT_LIMIT_HOURS, ROLLER_AUTO_REFRESH_MS, ROLLER_DEFAULT_LIMIT_HOURS, ROLLER_LIVE_TICK_MS } from '@/lib/roller-monitoring/constants';
+import { CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS, GEARBOX_DEFAULT_LIMIT_HOURS, ROLLER_AUTO_REFRESH_MS, ROLLER_DEFAULT_LIMIT_HOURS, ROLLER_DUE_FRACTION, ROLLER_LIVE_TICK_MS } from '@/lib/roller-monitoring/constants';
 import { formatReplaceDt, formatRuntimeHms } from '@/lib/roller-monitoring/formatRuntime';
 import { RuntimeTimer } from '@/lib/roller-monitoring/RuntimeTimer';
 import {
@@ -43,7 +43,8 @@ import {
 import {
     COMPONENT_DEFAULT_COMPANY,
     COMPONENT_DEFAULT_FACTORY,
-    isCustomPartNameTaken
+    isCustomPartNameTaken,
+    listCopyableComponents
 } from '@/lib/roller-monitoring/componentCatalog';
 import {
     fetchComponents,
@@ -93,7 +94,7 @@ import {
     setRollerDbTarget,
     type RollerDbTarget
 } from '@/lib/roller-monitoring/rollerMonitoringDbTarget';
-import { computeRollerStatus, usagePct } from '@/lib/roller-monitoring/rollerStatus';
+import { computeRollerStatus, needsAttentionStatus, usagePct } from '@/lib/roller-monitoring/rollerStatus';
 import {
     plantRunStatus,
     type FixedPartRow,
@@ -140,7 +141,7 @@ type SelectedPart =
 
 function barColor(pct: number): string {
     if (pct >= 100) return '#ef4444';
-    if (pct >= 80) return '#f59e0b';
+    if (pct >= Math.round(ROLLER_DUE_FRACTION * 100)) return '#f59e0b';
     return '#22c55e';
 }
 
@@ -938,6 +939,9 @@ export default function PartsBoardPage() {
     const [addCompany, setAddCompany] = useState(COMPONENT_DEFAULT_COMPANY);
     const [addFactory, setAddFactory] = useState(COMPONENT_DEFAULT_FACTORY);
     const [addLimitHours, setAddLimitHours] = useState(GEARBOX_DEFAULT_LIMIT_HOURS);
+    const [copySourceName, setCopySourceName] = useState<string | null>(null);
+    const [copySelectedKeys, setCopySelectedKeys] = useState<string[]>([]);
+    const [copySaving, setCopySaving] = useState(false);
     const [componentHistory, setComponentHistory] = useState<ComponentHistoryRow[]>([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyError, setHistoryError] = useState<string | null>(null);
@@ -1842,7 +1846,7 @@ export default function PartsBoardPage() {
                 if (!part.partId) continue;
                 const runtimeHours = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
                 const status = computeRollerStatus(runtimeHours, part.limitHours);
-                if (status !== 'Overdue') continue;
+                if (!needsAttentionStatus(status)) continue;
                 items.push({
                     key: `${machine.name}:fixed:${partKey}:${part.partId}`,
                     machineName: machine.name,
@@ -1857,7 +1861,7 @@ export default function PartsBoardPage() {
                 if (!part.partId) continue;
                 const runtimeHours = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
                 const status = computeRollerStatus(runtimeHours, part.limitHours);
-                if (status !== 'Overdue') continue;
+                if (!needsAttentionStatus(status)) continue;
                 items.push({
                     key: `${machine.name}:custom:${part.partId}`,
                     machineName: machine.name,
@@ -1871,7 +1875,7 @@ export default function PartsBoardPage() {
             if (buncherBoard) {
                 for (const roller of machine.rollers) {
                     const live = buildLiveRoller(roller, machine, syncEpochMs, nowMs);
-                    if (live.status !== 'Overdue') continue;
+                    if (!needsAttentionStatus(live.status)) continue;
                     items.push({
                         key: `${machine.name}:roller:${roller.binLocation || roller.rollerId || roller.displayName}`,
                         machineName: machine.name,
@@ -1944,6 +1948,8 @@ export default function PartsBoardPage() {
         setAddLimitHours(CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS);
         setAddCompany(COMPONENT_DEFAULT_COMPANY);
         setAddFactory(COMPONENT_DEFAULT_FACTORY);
+        setCopySourceName(null);
+        setCopySelectedKeys([]);
         setRenameMachineOpen(true);
     };
 
@@ -2262,6 +2268,97 @@ export default function PartsBoardPage() {
         const name = addCustomPartName.trim();
         return name.length > 0 && name.length <= 100 && !isCustomPartNameTaken(addTargetMachine, name);
     }, [addTargetMachine, addCustomPartName]);
+
+    const copySourceOptions = useMemo(
+        () =>
+            machines
+                .filter((m) => m.name !== addMachineName)
+                .filter((m) => m.gearbox.partId || m.skipperFront.partId || m.skipperBack.partId || m.extraParts.length > 0)
+                .map((m) => ({ label: m.name, value: m.name })),
+        [machines, addMachineName]
+    );
+
+    const copyableComponents = useMemo(() => {
+        if (!addTargetMachine || !copySourceName) return [];
+        const source = machines.find((m) => m.name === copySourceName);
+        if (!source) return [];
+        return listCopyableComponents(source, addTargetMachine);
+    }, [machines, addTargetMachine, copySourceName]);
+
+    const handleCopySourceChange = (name: string | null) => {
+        setCopySourceName(name);
+        if (!name || !addTargetMachine) {
+            setCopySelectedKeys([]);
+            return;
+        }
+        const source = machines.find((m) => m.name === name);
+        if (!source) {
+            setCopySelectedKeys([]);
+            return;
+        }
+        setCopySelectedKeys(listCopyableComponents(source, addTargetMachine).map((c) => c.key));
+    };
+
+    const toggleCopyKey = (key: string, checked: boolean) => {
+        setCopySelectedKeys((prev) => {
+            if (checked) return prev.includes(key) ? prev : [...prev, key];
+            return prev.filter((k) => k !== key);
+        });
+    };
+
+    const handleCopyComponents = async () => {
+        if (!addMachineName || !addTargetMachine || copySelectedKeys.length === 0) return;
+        const selected = copyableComponents.filter((c) => copySelectedKeys.includes(c.key));
+        if (!selected.length) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Select at least one component',
+                life: 3000
+            });
+            return;
+        }
+
+        setCopySaving(true);
+        let ok = 0;
+        const errors: string[] = [];
+        try {
+            for (const item of selected) {
+                try {
+                    await insertComponent(addMachineName, item.limitHours, dbTarget, {
+                        partType: item.partType,
+                        partDetails: item.details,
+                        company: addCompany.trim() || COMPONENT_DEFAULT_COMPANY,
+                        factory: addFactory.trim() || COMPONENT_DEFAULT_FACTORY,
+                        processCd,
+                        lineCd: processCd === 'STRANDING' ? strandLineCd : null
+                    });
+                    ok += 1;
+                } catch (e) {
+                    errors.push(`${item.label}: ${e instanceof Error ? e.message : 'failed'}`);
+                }
+            }
+
+            if (ok > 0) {
+                toast.current?.show({
+                    severity: errors.length ? 'warn' : 'success',
+                    summary: `Copied ${ok} component${ok === 1 ? '' : 's'}`,
+                    detail: errors.length ? errors.slice(0, 3).join(' · ') : `From ${copySourceName} → ${addMachineName}`,
+                    life: 5000
+                });
+                setRenameMachineOpen(false);
+                await loadDashboard(true, dbTarget);
+            } else {
+                toast.current?.show({
+                    severity: 'error',
+                    summary: 'Copy failed',
+                    detail: errors[0] || undefined,
+                    life: 5000
+                });
+            }
+        } finally {
+            setCopySaving(false);
+        }
+    };
 
     const handleAddComponent = async () => {
         if (!addMachineName) return;
@@ -3084,9 +3181,9 @@ export default function PartsBoardPage() {
                 className="pb-add-dialog"
                 header="Machine settings"
                 visible={renameMachineOpen}
-                style={{ width: 'min(92vw, 28rem)' }}
+                style={{ width: 'min(92vw, 32rem)' }}
                 onHide={() => {
-                    if (renameMachineSaving || addSaving) return;
+                    if (renameMachineSaving || addSaving || copySaving) return;
                     setRenameMachineOpen(false);
                 }}
                 dismissableMask
@@ -3125,6 +3222,7 @@ export default function PartsBoardPage() {
                             loading={renameMachineSaving}
                             disabled={
                                 addSaving ||
+                                copySaving ||
                                 !renameMachineInput.trim() ||
                                 (renameMachineInput.trim() === renameMachineFrom.trim() &&
                                     (processCd !== 'INLINE' ||
@@ -3145,7 +3243,7 @@ export default function PartsBoardPage() {
                             placeholder="e.g. Bearing, Gearbox, Seal"
                             maxLength={100}
                             className="w-full mb-2"
-                            disabled={!addTargetMachine || addSaving}
+                            disabled={!addTargetMachine || addSaving || copySaving}
                         />
                         {addCustomPartName.trim() &&
                         addTargetMachine &&
@@ -3163,7 +3261,7 @@ export default function PartsBoardPage() {
                             autoResize
                             maxLength={500}
                             className="w-full mb-2"
-                            disabled={!addTargetMachine || addSaving}
+                            disabled={!addTargetMachine || addSaving || copySaving}
                         />
                         <div className="grid grid-nogutter gap-3 mb-2">
                             <div className="col-12 md:col-6">
@@ -3195,8 +3293,103 @@ export default function PartsBoardPage() {
                                 label="Add component"
                                 icon="pi pi-plus"
                                 loading={addSaving}
-                                disabled={!addMachineName || !addPartAvailable || addLimitHours < 1 || renameMachineSaving}
+                                disabled={
+                                    !addMachineName ||
+                                    !addPartAvailable ||
+                                    addLimitHours < 1 ||
+                                    renameMachineSaving ||
+                                    copySaving
+                                }
                                 onClick={() => void handleAddComponent()}
+                            />
+                        </div>
+                    </div>
+                    <div className="pb-settings-add">
+                        <div className="font-semibold text-sm mb-2">Copy components from</div>
+                        <Message
+                            severity="info"
+                            className="mb-2"
+                            text="Copies component names, details, and limits. Runtime starts at 0. Skips parts already on this machine."
+                        />
+                        <label className="block mb-2 text-sm font-medium">Source machine</label>
+                        <Dropdown
+                            value={copySourceName}
+                            options={copySourceOptions}
+                            onChange={(e) => handleCopySourceChange(e.value ?? null)}
+                            placeholder={
+                                copySourceOptions.length
+                                    ? 'Select machine'
+                                    : 'No other machines with components'
+                            }
+                            className="w-full mb-2"
+                            disabled={!addTargetMachine || addSaving || copySaving || !copySourceOptions.length}
+                            showClear
+                            filter
+                        />
+                        {copySourceName ? (
+                            copyableComponents.length === 0 ? (
+                                <p className="text-color-secondary text-sm m-0 mb-2">
+                                    Nothing left to copy — this machine already has those components.
+                                </p>
+                            ) : (
+                                <ul className="pb-copy-list mb-2">
+                                    {copyableComponents.map((item) => {
+                                        const checked = copySelectedKeys.includes(item.key);
+                                        return (
+                                            <li key={item.key} className="pb-copy-list__row">
+                                                <Checkbox
+                                                    inputId={`copy-${item.key}`}
+                                                    checked={checked}
+                                                    disabled={addSaving || copySaving}
+                                                    onChange={(e) => toggleCopyKey(item.key, !!e.checked)}
+                                                />
+                                                <label htmlFor={`copy-${item.key}`} className="pb-copy-list__label">
+                                                    <span className="pb-copy-list__name">{item.label}</span>
+                                                    <span className="pb-copy-list__meta">
+                                                        Limit {item.limitHours}h
+                                                        {item.details ? ` · ${item.details}` : ''}
+                                                    </span>
+                                                </label>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            )
+                        ) : null}
+                        <div className="flex gap-2 justify-content-between align-items-center">
+                            {copyableComponents.length > 0 ? (
+                                <Button
+                                    label={
+                                        copySelectedKeys.length === copyableComponents.length
+                                            ? 'Clear'
+                                            : 'Select all'
+                                    }
+                                    text
+                                    size="small"
+                                    disabled={addSaving || copySaving}
+                                    onClick={() =>
+                                        setCopySelectedKeys(
+                                            copySelectedKeys.length === copyableComponents.length
+                                                ? []
+                                                : copyableComponents.map((c) => c.key)
+                                        )
+                                    }
+                                />
+                            ) : (
+                                <span />
+                            )}
+                            <Button
+                                label="Copy selected"
+                                icon="pi pi-copy"
+                                loading={copySaving}
+                                disabled={
+                                    !addMachineName ||
+                                    !copySourceName ||
+                                    copySelectedKeys.length === 0 ||
+                                    addSaving ||
+                                    renameMachineSaving
+                                }
+                                onClick={() => void handleCopyComponents()}
                             />
                         </div>
                     </div>

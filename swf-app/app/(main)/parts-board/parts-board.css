@@ -437,6 +437,46 @@
     padding-top: 0.85rem;
 }
 
+.pb-copy-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-height: 12rem;
+    overflow: auto;
+    border: 1px solid var(--surface-border);
+    border-radius: 6px;
+    padding: 0.45rem 0.55rem;
+    background: var(--surface-50, var(--surface-0));
+}
+
+.pb-copy-list__row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+}
+
+.pb-copy-list__label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.pb-copy-list__name {
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.pb-copy-list__meta {
+    font-size: 0.72rem;
+    color: var(--text-color-secondary);
+    word-break: break-word;
+}
+
 .pb-machine__fs-btn {
     width: 1.85rem !important;
     height: 1.85rem !important;

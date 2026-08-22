@@ -1,5 +1,5 @@
 import { ROLLER_DUE_FRACTION } from './constants';
-import type { RollerHealthStatus } from './types';
+import type { PartHealthStatus, RollerHealthStatus } from './types';
 
 export function computeRollerStatus(runtimeHours: number, limitHours: number): RollerHealthStatus {
     if (limitHours <= 0) return 'Overdue';
@@ -7,6 +7,11 @@ export function computeRollerStatus(runtimeHours: number, limitHours: number): R
     if (ratio >= 1) return 'Overdue';
     if (ratio >= ROLLER_DUE_FRACTION) return 'Due';
     return 'OK';
+}
+
+/** Due and Overdue — shown in Need attention lists. */
+export function needsAttentionStatus(status: PartHealthStatus): boolean {
+    return status === 'Due' || status === 'Overdue';
 }
 
 export function usagePct(runtimeHours: number, limitHours: number): number {

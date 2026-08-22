@@ -10,8 +10,8 @@ export const SKIPPER_BEARING_DEFAULT_LIMIT_HOURS = 6000;
 /** Default limit for custom parts (bearing, etc.). */
 export const CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS = 6000;
 
-/** Fraction of limit at which status becomes Due (matches desktop app). */
-export const ROLLER_DUE_FRACTION = 0.8;
+/** Fraction of limit at which status becomes Due. */
+export const ROLLER_DUE_FRACTION = 0.9;
 
 /** Auto-refresh interval for dashboard data (ms). */
 export const ROLLER_AUTO_REFRESH_MS = 30_000;

@@ -68,3 +68,49 @@ export function isCustomPartNameTaken(machine: MachineDashboard, name: string): 
 
     return machine.extraParts.some((p) => (p.partType ?? '').toUpperCase() === upper);
 }
+
+export type CopyableComponent = {
+    /** Stable checkbox key (unique on the source machine). */
+    key: string;
+    label: string;
+    partType: string;
+    limitHours: number;
+    details?: string;
+};
+
+/** Active components on source that are not already registered on target. */
+export function listCopyableComponents(
+    source: MachineDashboard,
+    target: MachineDashboard
+): CopyableComponent[] {
+    const items: CopyableComponent[] = [];
+
+    for (const opt of COMPONENT_PART_OPTIONS) {
+        const part = source[opt.key];
+        if (!part.partId?.trim()) continue;
+        if (isComponentRegistered(target, opt.key)) continue;
+        items.push({
+            key: `fixed:${opt.key}`,
+            label: opt.label,
+            partType: opt.partType,
+            limitHours: part.limitHours || opt.defaultLimitHours,
+            details: part.details?.trim() || undefined
+        });
+    }
+
+    for (const part of source.extraParts ?? []) {
+        if (!part.partId?.trim()) continue;
+        const partType = (part.partType || part.displayName || '').trim();
+        if (!partType) continue;
+        if (isCustomPartNameTaken(target, partType)) continue;
+        items.push({
+            key: `custom:${part.partId}`,
+            label: part.displayName || partType,
+            partType,
+            limitHours: part.limitHours || CUSTOM_COMPONENT_DEFAULT_LIMIT_HOURS,
+            details: part.details?.trim() || undefined
+        });
+    }
+
+    return items;
+}
