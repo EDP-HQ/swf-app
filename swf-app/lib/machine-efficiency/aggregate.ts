@@ -8,23 +8,70 @@ import type {
     StrandType
 } from './types';
 
+/** Factory wall-clock from API (`2026-08-28T07:51:25` or legacy `...Z`). */
+export function parseWallClock(iso: string): {
+    y: number;
+    m: number;
+    d: number;
+    h: number;
+    mi: number;
+} | null {
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+    if (m) {
+        return { y: +m[1], m: +m[2], d: +m[3], h: +m[4], mi: +m[5] };
+    }
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    // Legacy API: SQL wall clock was serialised with toISOString() (UTC slot).
+    if (/Z$/i.test(iso)) {
+        return {
+            y: d.getUTCFullYear(),
+            m: d.getUTCMonth() + 1,
+            d: d.getUTCDate(),
+            h: d.getUTCHours(),
+            mi: d.getUTCMinutes()
+        };
+    }
+    return {
+        y: d.getFullYear(),
+        m: d.getMonth() + 1,
+        d: d.getDate(),
+        h: d.getHours(),
+        mi: d.getMinutes()
+    };
+}
+
+function wallClockToMs(iso: string): number {
+    const p = parseWallClock(iso);
+    if (!p) return 0;
+    return Date.UTC(p.y, p.m - 1, p.d, p.h, p.mi);
+}
+
 /** Shift day rolls at 08:00; Day = 08:00–20:00, Night = 20:00–08:00. */
 export function getShiftPeriod(iso: string): 'Day' | 'Night' {
-    const h = new Date(iso).getHours();
-    return h >= 8 && h < 20 ? 'Day' : 'Night';
+    const p = parseWallClock(iso);
+    if (!p) return 'Day';
+    return p.h >= 8 && p.h < 20 ? 'Day' : 'Night';
 }
 
 export function getShiftDate(iso: string): string {
-    const d = new Date(iso);
-    if (d.getHours() < 8) d.setDate(d.getDate() - 1);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+    const p = parseWallClock(iso);
+    if (!p) return '';
+    let y = p.y;
+    let m = p.m;
+    let d = p.d;
+    if (p.h < 8) {
+        const adj = new Date(Date.UTC(y, m - 1, d));
+        adj.setUTCDate(adj.getUTCDate() - 1);
+        y = adj.getUTCFullYear();
+        m = adj.getUTCMonth() + 1;
+        d = adj.getUTCDate();
+    }
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
 export function diffMin(a: string, b: string): number {
-    return Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000));
+    return Math.max(0, Math.round((wallClockToMs(b) - wallClockToMs(a)) / 60000));
 }
 
 export type EfficiencyFilters = {
@@ -154,10 +201,7 @@ export function formatKg(n: number): string {
 }
 
 export function formatTime(iso: string): string {
-    const d = new Date(iso);
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mi = String(d.getMinutes()).padStart(2, '0');
-    return `${dd}/${mm} ${hh}:${mi}`;
+    const p = parseWallClock(iso);
+    if (!p) return '—';
+    return `${String(p.d).padStart(2, '0')}/${String(p.m).padStart(2, '0')} ${String(p.h).padStart(2, '0')}:${String(p.mi).padStart(2, '0')}`;
 }
