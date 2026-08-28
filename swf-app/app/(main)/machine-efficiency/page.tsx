@@ -26,14 +26,15 @@ type TabKey = 'overview' | 'machines';
 /** Same cadence as parts-board roller auto-refresh. */
 const EFFICIENCY_AUTO_REFRESH_MS = 30_000;
 
-function parseYmd(s: string): Date {
-    const [y, m, d] = s.split('-').map(Number);
-    return new Date(y, m - 1, d);
-}
-
 function toYmd(d: Date | null): string {
     if (!d) return '';
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function todayLocal(): Date {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
 }
 
 function peTone(v: number): string {
@@ -45,8 +46,8 @@ export default function MachineEfficiencyPage() {
     const [tab, setTab] = useState<TabKey>('overview');
     const [process, setProcess] = useState<ProcessCd>('DRAWING');
     const [strandType, setStrandType] = useState<StrandType>('all');
-    const [dateFrom, setDateFrom] = useState<Date | null>(parseYmd('2026-08-19'));
-    const [dateTo, setDateTo] = useState<Date | null>(parseYmd('2026-08-19'));
+    const [dateFrom, setDateFrom] = useState<Date | null>(() => todayLocal());
+    const [dateTo, setDateTo] = useState<Date | null>(() => todayLocal());
     const [shift, setShift] = useState<ShiftFilter>('all');
     const [operator, setOperator] = useState('all');
     const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
@@ -130,8 +131,8 @@ export default function MachineEfficiencyPage() {
             filterRuns(baseRuns, {
                 process,
                 strandType,
-                dateFrom: toYmd(dateFrom) || '2026-08-19',
-                dateTo: toYmd(dateTo) || '2026-08-19',
+                dateFrom: toYmd(dateFrom) || toYmd(todayLocal()),
+                dateTo: toYmd(dateTo) || toYmd(todayLocal()),
                 shift,
                 operator
             }),
