@@ -71,5 +71,16 @@ export const APP_NAV_SECTIONS: AppNavSection[] = [
                 description: 'Machines, rollers, components — dashboard with alerts and edit.'
             }
         ]
+    },
+    {
+        label: 'Production',
+        items: [
+            {
+                label: 'Machine Efficiency',
+                to: '/machine-efficiency',
+                icon: 'pi pi-fw pi-chart-bar',
+                description: 'Drawing & Stranding PE, changeover, and abnormal bobbin overview.'
+            }
+        ]
     }
 ];
