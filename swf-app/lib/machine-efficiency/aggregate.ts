@@ -47,7 +47,13 @@ function wallClockToMs(iso: string): number {
     return Date.UTC(p.y, p.m - 1, p.d, p.h, p.mi);
 }
 
-/** Shift day rolls at 08:00; Day = 08:00–20:00, Night = 20:00–08:00. */
+/**
+ * Production / shift day uses FINISH_DT (run end), not start —
+ * so a bobbin that starts before 08:00 and finishes after 08:00
+ * is collected on the end date (same as SFC Prod. Date intent).
+ *
+ * Shift day rolls at 08:00; Day = 08:00–20:00, Night = 20:00–08:00.
+ */
 export function getShiftPeriod(iso: string): 'Day' | 'Night' {
     const p = parseWallClock(iso);
     if (!p) return 'Day';
@@ -89,9 +95,9 @@ export function filterRuns(runs: ProductionRun[], f: EfficiencyFilters): Product
         if (f.process === 'STRANDING' && f.strandType !== 'all' && r.strandType !== f.strandType) {
             return false;
         }
-        const sd = getShiftDate(r.start);
+        const sd = getShiftDate(r.end);
         if (sd < f.dateFrom || sd > f.dateTo) return false;
-        if (f.shift !== 'all' && getShiftPeriod(r.start) !== f.shift) return false;
+        if (f.shift !== 'all' && getShiftPeriod(r.end) !== f.shift) return false;
         if (f.operator !== 'all' && r.operator !== f.operator) return false;
         return true;
     });
@@ -128,8 +134,8 @@ function changeoverStats(rows: ProductionRun[]): { events: number; minutes: numb
 }
 
 export function calcOverview(rows: ProductionRun[]): OverviewAgg {
-    const day = rows.filter((r) => getShiftPeriod(r.start) === 'Day');
-    const night = rows.filter((r) => getShiftPeriod(r.start) === 'Night');
+    const day = rows.filter((r) => getShiftPeriod(r.end) === 'Day');
+    const night = rows.filter((r) => getShiftPeriod(r.end) === 'Night');
     const co = changeoverStats(rows);
     const tLen = rows.reduce((s, r) => s + r.prodLen, 0);
     const tWt = rows.reduce((s, r) => s + r.prodWt, 0);
@@ -152,7 +158,7 @@ export function calcOverview(rows: ProductionRun[]): OverviewAgg {
 }
 
 export function calcShift(rows: ProductionRun[], period: 'Day' | 'Night'): ShiftAgg {
-    const subset = rows.filter((r) => getShiftPeriod(r.start) === period);
+    const subset = rows.filter((r) => getShiftPeriod(r.end) === period);
     const co = changeoverStats(subset);
     return {
         period,
