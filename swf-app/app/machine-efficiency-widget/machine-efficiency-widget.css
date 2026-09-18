@@ -1,0 +1,199 @@
+/* Machine Efficiency desktop widget — single machine card */
+
+.mew-root {
+    min-height: 100vh;
+    background: #f1f5f9;
+}
+
+.mew {
+    padding: 0.65rem 0.75rem 0.85rem;
+    font-family: inherit;
+    color: #0f172a;
+    box-sizing: border-box;
+}
+
+.mew *,
+.mew *::before,
+.mew *::after {
+    box-sizing: border-box;
+}
+
+.mew__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-bottom: 0.65rem;
+}
+
+.mew__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    flex: 1 1 8rem;
+}
+
+.mew__label {
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
+.mew__select {
+    width: 100%;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    color: #0f172a;
+}
+
+.mew__select:focus {
+    outline: 2px solid color-mix(in srgb, #3b82f6 45%, transparent);
+    outline-offset: 1px;
+}
+
+.mew__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.55rem;
+    font-size: 0.68rem;
+    color: #64748b;
+}
+
+.mew__date {
+    font-weight: 600;
+}
+
+.mew__status {
+    font-weight: 700;
+}
+
+.mew__status--ok {
+    color: #15803d;
+}
+
+.mew__status--err {
+    color: #b91c1c;
+}
+
+.mew__status--load {
+    color: #2563eb;
+}
+
+.mew__error {
+    margin: 0 0 0.55rem;
+    padding: 0.45rem 0.55rem;
+    border-radius: 8px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+    font-size: 0.78rem;
+}
+
+.mew__empty {
+    margin: 0;
+    padding: 1.25rem 0.75rem;
+    text-align: center;
+    color: #64748b;
+    font-size: 0.85rem;
+    background: #fff;
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+}
+
+.mew-card {
+    background: #fff;
+    border: 2px solid #3b82f6;
+    border-radius: 10px;
+    padding: 0.9rem 1rem 1rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.mew-card__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.55rem;
+}
+
+.mew-card__name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mew-card__dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.mew-card__pe {
+    font-size: 1.85rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+    text-align: center;
+    margin: 0.15rem 0 0.2rem;
+}
+
+.mew-card__label {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    text-align: center;
+    margin-bottom: 0.65rem;
+}
+
+.mew-card__bar {
+    height: 0.45rem;
+    border-radius: 999px;
+    background: #e2e8f0;
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+}
+
+.mew-card__fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.25s ease;
+}
+
+.mew-card__stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.35rem 0.85rem;
+    font-size: 0.78rem;
+    color: #64748b;
+}
+
+.mew-card__stats b {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.mew-card__ok {
+    color: #16a34a;
+}
+
+.mew-card__bad {
+    color: #ef4444;
+}
+
+.mew-card__neutral {
+    color: #0f172a;
+}
