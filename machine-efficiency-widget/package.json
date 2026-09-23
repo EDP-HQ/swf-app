@@ -1,0 +1,34 @@
+{
+  "name": "machine-efficiency-widget",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Desktop window for Machine Efficiency (one machine per build)",
+  "author": "Kiswire SWF",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "node build-widget.js"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "swf.machine.efficiency.swf.8x11hsp",
+    "productName": "SWF 8X11HSP",
+    "artifactName": "${productName}.${ext}",
+    "files": [
+      "main.js",
+      "package.json",
+      "machine-config.js"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ]
+    }
+  }
+}

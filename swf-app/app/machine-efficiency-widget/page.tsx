@@ -13,27 +13,19 @@ import type { ProcessCd, ProductionRun } from '@/lib/machine-efficiency/types';
 import './machine-efficiency-widget.css';
 
 const AUTO_REFRESH_MS = 30_000;
-const STORAGE_PROCESS = 'me-widget-process';
-const STORAGE_MACHINE = 'me-widget-machine';
 
 function todayYmd(): string {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function readStoredProcess(): ProcessCd {
-    if (typeof window === 'undefined') return 'DRAWING';
-    const q = new URLSearchParams(window.location.search).get('process');
-    if (q === 'DRAWING' || q === 'STRANDING') return q;
-    const s = localStorage.getItem(STORAGE_PROCESS);
-    return s === 'STRANDING' ? 'STRANDING' : 'DRAWING';
-}
-
-function readStoredMachine(): string {
-    if (typeof window === 'undefined') return '';
-    const q = new URLSearchParams(window.location.search).get('machine');
-    if (q) return q;
-    return localStorage.getItem(STORAGE_MACHINE) || '';
+function readPinnedConfig(): { process: ProcessCd; machine: string } {
+    if (typeof window === 'undefined') return { process: 'DRAWING', machine: '' };
+    const qs = new URLSearchParams(window.location.search);
+    const p = qs.get('process');
+    const process: ProcessCd = p === 'STRANDING' ? 'STRANDING' : 'DRAWING';
+    const machine = (qs.get('machine') || '').trim();
+    return { process, machine };
 }
 
 export default function MachineEfficiencyWidgetPage() {
@@ -46,8 +38,9 @@ export default function MachineEfficiencyWidgetPage() {
     const [hydrated, setHydrated] = useState(false);
 
     useEffect(() => {
-        setProcess(readStoredProcess());
-        setMachine(readStoredMachine());
+        const cfg = readPinnedConfig();
+        setProcess(cfg.process);
+        setMachine(cfg.machine);
         setHydrated(true);
     }, []);
 
@@ -55,6 +48,11 @@ export default function MachineEfficiencyWidgetPage() {
 
     const load = useCallback(
         async (silent = false) => {
+            if (!machine) {
+                setLoading(false);
+                setError('Missing machine. Open with ?machine=…&process=DRAWING|STRANDING');
+                return;
+            }
             if (!silent) setLoading(true);
             try {
                 const data = await fetchEfficiencyBundle({
@@ -72,7 +70,7 @@ export default function MachineEfficiencyWidgetPage() {
                 if (!silent) setLoading(false);
             }
         },
-        [process, dateYmd]
+        [process, dateYmd, machine]
     );
 
     useEffect(() => {
@@ -81,16 +79,6 @@ export default function MachineEfficiencyWidgetPage() {
         const id = window.setInterval(() => void load(true), AUTO_REFRESH_MS);
         return () => window.clearInterval(id);
     }, [hydrated, load]);
-
-    useEffect(() => {
-        if (!hydrated) return;
-        localStorage.setItem(STORAGE_PROCESS, process);
-    }, [hydrated, process]);
-
-    useEffect(() => {
-        if (!hydrated || !machine) return;
-        localStorage.setItem(STORAGE_MACHINE, machine);
-    }, [hydrated, machine]);
 
     const filtered = useMemo(
         () =>
@@ -106,63 +94,10 @@ export default function MachineEfficiencyWidgetPage() {
     );
 
     const machines = useMemo(() => calcMachines(filtered), [filtered]);
-    const machineNames = useMemo(() => machines.map((m) => m.name), [machines]);
-
-    useEffect(() => {
-        if (!hydrated || machineNames.length === 0) return;
-        if (!machine || !machineNames.includes(machine)) {
-            setMachine(machineNames[0]);
-        }
-    }, [hydrated, machineNames, machine]);
-
-    const selected = machines.find((m) => m.name === machine) ?? null;
-
-    function onProcessChange(next: ProcessCd) {
-        setProcess(next);
-        setMachine('');
-    }
+    const selected = machine ? machines.find((m) => m.name === machine) ?? null : null;
 
     return (
         <main className="mew">
-            <div className="mew__toolbar">
-                <div className="mew__field">
-                    <label className="mew__label" htmlFor="mew-process">
-                        Process
-                    </label>
-                    <select
-                        id="mew-process"
-                        className="mew__select"
-                        value={process}
-                        onChange={(e) => onProcessChange(e.target.value as ProcessCd)}
-                    >
-                        <option value="DRAWING">Drawing</option>
-                        <option value="STRANDING">Stranding</option>
-                    </select>
-                </div>
-                <div className="mew__field">
-                    <label className="mew__label" htmlFor="mew-machine">
-                        Machine
-                    </label>
-                    <select
-                        id="mew-machine"
-                        className="mew__select"
-                        value={machine}
-                        onChange={(e) => setMachine(e.target.value)}
-                        disabled={machineNames.length === 0}
-                    >
-                        {machineNames.length === 0 ? (
-                            <option value="">No machines</option>
-                        ) : (
-                            machineNames.map((name) => (
-                                <option key={name} value={name}>
-                                    {name}
-                                </option>
-                            ))
-                        )}
-                    </select>
-                </div>
-            </div>
-
             <div className="mew__meta">
                 <span className="mew__date">Today · {dateYmd}</span>
                 <span
@@ -182,8 +117,10 @@ export default function MachineEfficiencyWidgetPage() {
 
             {error ? <p className="mew__error">{error}</p> : null}
 
-            {!error && !loading && !selected ? (
-                <p className="mew__empty">No production for this process today.</p>
+            {!error && !loading && machine && !selected ? (
+                <p className="mew__empty">
+                    No production today for <strong>{machine}</strong>.
+                </p>
             ) : null}
 
             {selected ? (
@@ -211,18 +148,20 @@ export default function MachineEfficiencyWidgetPage() {
                     </div>
                     <div className="mew-card__stats">
                         <span>
-                            Normal{' '}
-                            <b className="mew-card__ok">{formatKg(selected.gWt)}</b>
+                            Normal <b className="mew-card__ok">{formatKg(selected.gWt)}</b>
                         </span>
                         <span>
-                            Abnormal{' '}
-                            <b className="mew-card__bad">{formatKg(selected.nWt)}</b>
+                            Abnormal <b className="mew-card__bad">{formatKg(selected.nWt)}</b>
                         </span>
                         <span>
-                            Bobbins <b className="mew-card__neutral">{formatNum(selected.gCnt + selected.nCnt)}</b>
+                            Bobbins{' '}
+                            <b className="mew-card__neutral">
+                                {formatNum(selected.gCnt + selected.nCnt)}
+                            </b>
                         </span>
                         <span>
-                            C/O <b className="mew-card__neutral">{formatNum(selected.coMin)} min</b>
+                            C/O{' '}
+                            <b className="mew-card__neutral">{formatNum(selected.coMin)} min</b>
                         </span>
                     </div>
                 </article>
