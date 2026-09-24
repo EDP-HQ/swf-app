@@ -10,6 +10,16 @@
     font-family: inherit;
     color: #0f172a;
     box-sizing: border-box;
+    min-height: 100vh;
+    transition:
+        filter 0.35s ease,
+        opacity 0.35s ease;
+}
+
+.mew--idle {
+    filter: blur(4px);
+    opacity: 0.72;
+    pointer-events: auto;
 }
 
 .mew *,

@@ -1,0 +1,70 @@
+[
+    {
+        "process":  "DRAWING",
+        "machine":  "SWF 10X12HSP-1"
+    },
+    {
+        "process":  "DRAWING",
+        "machine":  "SWF 10X12HSP-2"
+    },
+    {
+        "process":  "DRAWING",
+        "machine":  "SWF 12X12HSP"
+    },
+    {
+        "process":  "DRAWING",
+        "machine":  "SWF 12X13HSP"
+    },
+    {
+        "process":  "DRAWING",
+        "machine":  "SWF 8X11HSP"
+    },
+    {
+        "process":  "DRAWING",
+        "machine":  "SWF 8X12HSP-1"
+    },
+    {
+        "process":  "DRAWING",
+        "machine":  "SWF 8X12HSP-2"
+    },
+    {
+        "process":  "DRAWING",
+        "machine":  "SWF 8X12HSP-3"
+    },
+    {
+        "process":  "STRANDING",
+        "machine":  "SWF 8X36F-2"
+    },
+    {
+        "process":  "STRANDING",
+        "machine":  "SWF 8X6F-3 (cmp no)"
+    },
+    {
+        "process":  "STRANDING",
+        "machine":  "SWF 8X6F-4 (cmp ok)"
+    },
+    {
+        "process":  "STRANDING",
+        "machine":  "SWF 8X6F-6 (cmp ok)"
+    },
+    {
+        "process":  "STRANDING",
+        "machine":  "SWF BUN 300-2 (7)"
+    },
+    {
+        "process":  "STRANDING",
+        "machine":  "SWF BUN 400-1 (19)"
+    },
+    {
+        "process":  "STRANDING",
+        "machine":  "SWF BUN 500-1 (36)"
+    },
+    {
+        "process":  "STRANDING",
+        "machine":  "SWF BUN 500-2 (36, BUN 400 remodel)"
+    },
+    {
+        "process":  "STRANDING",
+        "machine":  "SWF BUN 630 (36)"
+    }
+]
