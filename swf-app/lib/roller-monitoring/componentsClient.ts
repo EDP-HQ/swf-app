@@ -57,14 +57,15 @@ function resolveComponentsUrl(endpoint: ComponentsApiEndpoint, target = getRolle
 }
 
 function parseErrorMessage(body: unknown, status: number): string {
-    if (
-        body &&
-        typeof body === 'object' &&
-        body !== null &&
-        'error' in body &&
-        typeof (body as { error: unknown }).error === 'string'
-    ) {
-        return (body as { error: string }).error;
+    if (body && typeof body === 'object' && body !== null && 'error' in body) {
+        const err = (body as { error: unknown; detail?: unknown }).error;
+        const detail = (body as { detail?: unknown }).detail;
+        if (typeof err === 'string') {
+            if (typeof detail === 'string' && detail.trim() && detail !== err) {
+                return `${err}: ${detail}`;
+            }
+            return err;
+        }
     }
     return `API returned ${status}`;
 }
@@ -192,13 +193,15 @@ function historyRowFromRecord(row: Record<string, unknown>): ComponentHistoryRow
 export async function fetchComponentHistory(
     machineName: string,
     target = getRollerDbTarget(),
-    options?: { partType?: string }
+    options?: { partType?: string; partId?: string }
 ): Promise<ComponentHistoryRow[]> {
     const machine = machineName.trim();
     const partType = options?.partType?.trim() || '';
+    const partId = options?.partId?.trim() || '';
     const qs = new URLSearchParams();
     if (machine) qs.set('machineNm', machine);
     if (partType) qs.set('partType', partType);
+    if (partId) qs.set('partId', partId);
     const url = `${resolveComponentsUrl('history', target)}?${qs.toString()}`;
 
     let res: Response;

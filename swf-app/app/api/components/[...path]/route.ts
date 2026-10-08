@@ -81,15 +81,19 @@ async function handle(req: NextRequest, segments: string[] | undefined) {
     try {
         const { res, body } = await proxySwfApi(`/components/${swfPath}`, init, req.nextUrl.search);
         if (!res.ok) {
+            const payload =
+                body && typeof body === 'object' && body !== null
+                    ? (body as { error?: unknown; detail?: unknown })
+                    : null;
             const msg =
-                body &&
-                typeof body === 'object' &&
-                body !== null &&
-                'error' in body &&
-                typeof (body as { error: unknown }).error === 'string'
-                    ? (body as { error: string }).error
+                payload && typeof payload.error === 'string'
+                    ? payload.error
                     : `swf-api returned ${res.status}`;
-            return NextResponse.json({ error: msg }, { status: res.status >= 400 ? res.status : 502 });
+            const detail = payload && typeof payload.detail === 'string' ? payload.detail : undefined;
+            return NextResponse.json(
+                detail ? { error: msg, detail } : { error: msg },
+                { status: res.status >= 400 ? res.status : 502 }
+            );
         }
         return NextResponse.json(body ?? []);
     } catch (err) {

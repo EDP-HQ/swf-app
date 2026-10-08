@@ -1368,11 +1368,11 @@ export default function PartsBoardPage() {
     };
 
     const loadComponentHistory = useCallback(
-        async (machineName: string, partType: string, target = dbTarget) => {
+        async (machineName: string, partType: string, partId?: string, target = dbTarget) => {
             setHistoryLoading(true);
             setHistoryError(null);
             try {
-                const rows = await fetchComponentHistory(machineName, target, { partType });
+                const rows = await fetchComponentHistory(machineName, target, { partType, partId });
                 setComponentHistory(rows);
             } catch (e) {
                 setComponentHistory([]);
@@ -1586,7 +1586,7 @@ export default function PartsBoardPage() {
             return;
         }
 
-        void loadComponentHistory(selectedPart.machine.name, partType);
+        void loadComponentHistory(selectedPart.machine.name, partType, selectedPart.part.partId);
     }, [selectedPart, loadComponentHistory, loadRollerHistory]);
 
     const closeEdit = () => {
@@ -1640,7 +1640,7 @@ export default function PartsBoardPage() {
             toast.current?.show({ severity: 'success', summary: 'Limit saved', life: 3000 });
             const partType = selectedPart.part.partType || formatPartTypeLabel(selectedPart.part);
             if (partType) {
-                await loadComponentHistory(selectedPart.machine.name, partType);
+                await loadComponentHistory(selectedPart.machine.name, partType, selectedPart.part.partId);
             }
             closeEdit();
             await loadDashboard(true, dbTarget);
@@ -3238,7 +3238,11 @@ export default function PartsBoardPage() {
                                         const partType =
                                             selectedPart.part.partType || formatPartTypeLabel(selectedPart.part);
                                         if (partType) {
-                                            void loadComponentHistory(selectedPart.machine.name, partType);
+                                            void loadComponentHistory(
+                                                selectedPart.machine.name,
+                                                partType,
+                                                selectedPart.part.partId
+                                            );
                                         }
                                     }}
                                     aria-label="Refresh history"
