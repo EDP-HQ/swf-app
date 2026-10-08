@@ -80,10 +80,13 @@ import {
 import { applyComponentsToMachines, applyRollersToRegistryMachines, machinesFromRegistry } from '@/lib/roller-monitoring/mergeComponents';
 import { applyOnoffToMachines, applyInlineLineRunning } from '@/lib/roller-monitoring/mergeDashboard';
 import {
+    BOARD_TAB_OPTIONS,
+    boardTabLabel,
+    boardTabToProcess,
     isBuncherBoard,
     isBuncherMachineName,
-    PROCESS_OPTIONS,
-    STRAND_LINE_OPTIONS,
+    processToBoardTab,
+    type BoardTabCd,
     type ProcessCd,
     type StrandLineCd
 } from '@/lib/roller-monitoring/processCatalog';
@@ -126,6 +129,8 @@ type LiveRoller = {
 
 type AttentionItem = {
     key: string;
+    boardTab: BoardTabCd;
+    boardLabel: string;
     machineName: string;
     label: string;
     runtimeHours: number;
@@ -133,6 +138,37 @@ type AttentionItem = {
     pct: number;
     open: () => void;
 };
+
+type PendingAttentionOpen = {
+    boardTab: BoardTabCd;
+    processCd: ProcessCd;
+    lineCd: StrandLineCd | null;
+    kind: 'fixed' | 'custom' | 'roller';
+    machineName: string;
+    partKey?: MachineFixedPartKey;
+    partId?: string;
+    rollerKey?: string;
+};
+
+type PlantAttentionBoard = {
+    tab: BoardTabCd;
+    label: string;
+    processCd: ProcessCd;
+    lineCd: StrandLineCd | null;
+    includeRollers: boolean;
+    machines: MachineDashboard[];
+};
+
+const ATTENTION_BOARD_SPECS: Omit<PlantAttentionBoard, 'machines'>[] = BOARD_TAB_OPTIONS.map((t) => {
+    const { processCd, lineCd } = boardTabToProcess(t.code);
+    return {
+        tab: t.code,
+        label: t.label,
+        processCd,
+        lineCd,
+        includeRollers: isBuncherBoard(processCd, lineCd)
+    };
+});
 
 type SelectedPart =
     | { kind: 'roller'; machine: MachineDashboard; roller: RollerRow }
@@ -978,6 +1014,11 @@ export default function PartsBoardPage() {
     const [spareGearboxId, setSpareGearboxId] = useState<string | null>(null);
     const [gearboxPoolLoading, setGearboxPoolLoading] = useState(false);
     const [attentionExpanded, setAttentionExpanded] = useState(false);
+    const [plantAttention, setPlantAttention] = useState<{
+        boards: PlantAttentionBoard[];
+        syncEpochMs: number;
+    }>({ boards: [], syncEpochMs: Date.now() });
+    const [pendingAttentionOpen, setPendingAttentionOpen] = useState<PendingAttentionOpen | null>(null);
     const [layoutColumns, setLayoutColumns] = useState<string[][]>([]);
     const [cardSizes, setCardSizes] = useState<Record<string, CardSize>>({});
     const [savedLayout, setSavedLayout] = useState<BoardLayout>(emptyBoardLayout());
@@ -1146,6 +1187,69 @@ export default function PartsBoardPage() {
         }
     }, []);
 
+    const loadPlantAttention = useCallback(async (target = getRollerDbTarget()) => {
+        const syncMs = Date.now();
+        const boards = await Promise.all(
+            ATTENTION_BOARD_SPECS.map(async (spec) => {
+                try {
+                    const useBuncher = spec.includeRollers;
+                    const registry = await fetchCmMachines(spec.processCd, spec.lineCd, target);
+                    const [rollerData, components, plantOnoff] = await Promise.all([
+                        useBuncher
+                            ? fetchRollerDashboard(
+                                  target,
+                                  { processCd: spec.processCd, lineCd: spec.lineCd },
+                                  { includeComponents: false }
+                              ).catch(() => null)
+                            : Promise.resolve(null),
+                        fetchComponents(target, {
+                            processCd: spec.processCd,
+                            lineCd: spec.lineCd
+                        }).catch(() => []),
+                        useBuncher
+                            ? Promise.resolve(null)
+                            : fetchComponentsOnoff(target, {
+                                  processCd: spec.processCd,
+                                  lineCd: spec.lineCd
+                              }).catch(() => null)
+                    ]);
+
+                    const allowed = registry
+                        .filter((m) => m.visible)
+                        .filter((m) => (useBuncher ? true : !isBuncherMachineName(m.machineName)));
+
+                    let incoming = machinesFromRegistry(
+                        allowed.map((m) => ({
+                            machineName: m.machineName,
+                            machineNo: m.machineNo,
+                            running: m.running,
+                            isLineCard: m.isLineCard
+                        }))
+                    );
+
+                    if (useBuncher && rollerData) {
+                        incoming = applyRollersToRegistryMachines(incoming, rollerData.machines);
+                    } else if (plantOnoff) {
+                        incoming = applyOnoffToMachines(incoming, plantOnoff, {
+                            matchByCodeOnly: spec.processCd === 'INLINE'
+                        });
+                    }
+
+                    if (spec.processCd === 'INLINE') {
+                        incoming = applyInlineLineRunning(incoming);
+                    }
+
+                    incoming = applyComponentsToMachines(incoming, components);
+                    return { ...spec, machines: incoming };
+                } catch (e) {
+                    console.warn('plant attention board failed', spec.tab, e);
+                    return { ...spec, machines: [] as MachineDashboard[] };
+                }
+            })
+        );
+        setPlantAttention({ boards, syncEpochMs: syncMs });
+    }, []);
+
     useEffect(() => {
         try {
             if (typeof window !== 'undefined' && sessionStorage.getItem(ROLLER_DEV_MODE_STORAGE_KEY) === '1') {
@@ -1159,6 +1263,10 @@ export default function PartsBoardPage() {
     useEffect(() => {
         setDbTargetUi(getRollerDbTarget());
     }, []);
+
+    useEffect(() => {
+        void loadPlantAttention(getRollerDbTarget());
+    }, [loadPlantAttention]);
 
     useEffect(() => {
         processCdRef.current = processCd;
@@ -1231,9 +1339,13 @@ export default function PartsBoardPage() {
 
     useEffect(() => {
         if (!autoRefresh) return;
-        const id = window.setInterval(() => loadDashboard(true, getRollerDbTarget()), ROLLER_AUTO_REFRESH_MS);
+        const id = window.setInterval(() => {
+            const target = getRollerDbTarget();
+            void loadDashboard(true, target);
+            void loadPlantAttention(target);
+        }, ROLLER_AUTO_REFRESH_MS);
         return () => window.clearInterval(id);
-    }, [autoRefresh, loadDashboard]);
+    }, [autoRefresh, loadDashboard, loadPlantAttention]);
 
     useEffect(() => {
         const id = window.setInterval(() => setNowMs(Date.now()), ROLLER_LIVE_TICK_MS);
@@ -1251,7 +1363,8 @@ export default function PartsBoardPage() {
     const onDbTargetChange = (value: RollerDbTarget) => {
         setDbTargetUi(value);
         setRollerDbTarget(value);
-        loadDashboard(true, value);
+        void loadDashboard(true, value);
+        void loadPlantAttention(value);
     };
 
     const loadComponentHistory = useCallback(
@@ -1388,6 +1501,62 @@ export default function PartsBoardPage() {
         if (partKey) openFixedEdit(machine, partKey, part);
         else openCustomEdit(machine, part);
     };
+
+    const openAttentionOnCurrentBoard = useCallback((meta: PendingAttentionOpen) => {
+        const machine = machinesRef.current.find((m) => m.name === meta.machineName);
+        if (!machine) return;
+        if (meta.kind === 'fixed' && meta.partKey) {
+            const part = machine[meta.partKey];
+            if (part?.partId) openFixedEdit(machine, meta.partKey, part);
+            return;
+        }
+        if (meta.kind === 'custom' && meta.partId) {
+            const part = (machine.extraParts ?? []).find((p) => p.partId === meta.partId);
+            if (part) openCustomEdit(machine, part);
+            return;
+        }
+        if (meta.kind === 'roller' && meta.rollerKey) {
+            const roller = machine.rollers.find(
+                (r) =>
+                    r.binLocation === meta.rollerKey ||
+                    r.rollerId === meta.rollerKey ||
+                    r.displayName === meta.rollerKey
+            );
+            if (roller) openRollerEdit(machine, roller);
+        }
+        // openFixedEdit / openCustomEdit / openRollerEdit are stable enough for this board action
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const activateAttention = useCallback(
+        (meta: PendingAttentionOpen) => {
+            const currentTab = processToBoardTab(
+                processCdRef.current,
+                processCdRef.current === 'STRANDING' ? strandLineCdRef.current : null
+            );
+            if (meta.boardTab !== currentTab) {
+                setPendingAttentionOpen(meta);
+                loadGenRef.current += 1;
+                processCdRef.current = meta.processCd;
+                strandLineCdRef.current = meta.lineCd ?? 'BUNCHER';
+                setProcessCd(meta.processCd);
+                setStrandLineCd(meta.lineCd ?? 'BUNCHER');
+                setAttentionExpanded(false);
+                return;
+            }
+            openAttentionOnCurrentBoard(meta);
+        },
+        [openAttentionOnCurrentBoard]
+    );
+
+    useEffect(() => {
+        if (loading || !pendingAttentionOpen) return;
+        const currentTab = processToBoardTab(processCd, processCd === 'STRANDING' ? strandLineCd : null);
+        if (pendingAttentionOpen.boardTab !== currentTab) return;
+        if (machines.length === 0) return;
+        openAttentionOnCurrentBoard(pendingAttentionOpen);
+        setPendingAttentionOpen(null);
+    }, [loading, machines, processCd, strandLineCd, pendingAttentionOpen, openAttentionOnCurrentBoard]);
 
     useEffect(() => {
         if (!selectedPart || selectedPart.kind === 'roller') {
@@ -1840,58 +2009,93 @@ export default function PartsBoardPage() {
 
     const attentionItems = useMemo(() => {
         const items: AttentionItem[] = [];
-        for (const machine of sortedMachines) {
-            for (const partKey of MACHINE_FIXED_PART_KEYS) {
-                const part = machine[partKey];
-                if (!part.partId) continue;
-                const runtimeHours = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
-                const status = computeRollerStatus(runtimeHours, part.limitHours);
-                if (!needsAttentionStatus(status)) continue;
-                items.push({
-                    key: `${machine.name}:fixed:${partKey}:${part.partId}`,
-                    machineName: machine.name,
-                    label: part.displayName,
-                    runtimeHours,
-                    limitHours: part.limitHours,
-                    pct: usagePct(runtimeHours, part.limitHours),
-                    open: () => openFixedEdit(machine, partKey, part)
-                });
-            }
-            for (const part of machine.extraParts ?? []) {
-                if (!part.partId) continue;
-                const runtimeHours = liveFixedPartRuntimeHours(part, machine, syncEpochMs, nowMs);
-                const status = computeRollerStatus(runtimeHours, part.limitHours);
-                if (!needsAttentionStatus(status)) continue;
-                items.push({
-                    key: `${machine.name}:custom:${part.partId}`,
-                    machineName: machine.name,
-                    label: part.displayName,
-                    runtimeHours,
-                    limitHours: part.limitHours,
-                    pct: usagePct(runtimeHours, part.limitHours),
-                    open: () => openCustomEdit(machine, part)
-                });
-            }
-            if (buncherBoard) {
-                for (const roller of machine.rollers) {
-                    const live = buildLiveRoller(roller, machine, syncEpochMs, nowMs);
-                    if (!needsAttentionStatus(live.status)) continue;
-                    items.push({
-                        key: `${machine.name}:roller:${roller.binLocation || roller.rollerId || roller.displayName}`,
+        const epoch = plantAttention.syncEpochMs;
+        for (const board of plantAttention.boards) {
+            for (const machine of board.machines) {
+                for (const partKey of MACHINE_FIXED_PART_KEYS) {
+                    const part = machine[partKey];
+                    if (!part.partId) continue;
+                    const runtimeHours = liveFixedPartRuntimeHours(part, machine, epoch, nowMs);
+                    const status = computeRollerStatus(runtimeHours, part.limitHours);
+                    if (!needsAttentionStatus(status)) continue;
+                    const meta: PendingAttentionOpen = {
+                        boardTab: board.tab,
+                        processCd: board.processCd,
+                        lineCd: board.lineCd,
+                        kind: 'fixed',
                         machineName: machine.name,
-                        label: roller.displayName,
-                        runtimeHours: live.runtimeHours,
-                        limitHours: roller.limitHours,
-                        pct: live.pct,
-                        open: () => openRollerEdit(machine, roller)
+                        partKey,
+                        partId: part.partId
+                    };
+                    items.push({
+                        key: `${board.tab}:${machine.name}:fixed:${partKey}:${part.partId}`,
+                        boardTab: board.tab,
+                        boardLabel: board.label,
+                        machineName: machine.name,
+                        label: part.displayName,
+                        runtimeHours,
+                        limitHours: part.limitHours,
+                        pct: usagePct(runtimeHours, part.limitHours),
+                        open: () => activateAttention(meta)
                     });
+                }
+                for (const part of machine.extraParts ?? []) {
+                    if (!part.partId) continue;
+                    const runtimeHours = liveFixedPartRuntimeHours(part, machine, epoch, nowMs);
+                    const status = computeRollerStatus(runtimeHours, part.limitHours);
+                    if (!needsAttentionStatus(status)) continue;
+                    const meta: PendingAttentionOpen = {
+                        boardTab: board.tab,
+                        processCd: board.processCd,
+                        lineCd: board.lineCd,
+                        kind: 'custom',
+                        machineName: machine.name,
+                        partId: part.partId
+                    };
+                    items.push({
+                        key: `${board.tab}:${machine.name}:custom:${part.partId}`,
+                        boardTab: board.tab,
+                        boardLabel: board.label,
+                        machineName: machine.name,
+                        label: part.displayName,
+                        runtimeHours,
+                        limitHours: part.limitHours,
+                        pct: usagePct(runtimeHours, part.limitHours),
+                        open: () => activateAttention(meta)
+                    });
+                }
+                if (board.includeRollers) {
+                    for (const roller of machine.rollers) {
+                        const live = buildLiveRoller(roller, machine, epoch, nowMs);
+                        if (!needsAttentionStatus(live.status)) continue;
+                        const rollerKey = roller.binLocation || roller.rollerId || roller.displayName;
+                        const meta: PendingAttentionOpen = {
+                            boardTab: board.tab,
+                            processCd: board.processCd,
+                            lineCd: board.lineCd,
+                            kind: 'roller',
+                            machineName: machine.name,
+                            rollerKey
+                        };
+                        items.push({
+                            key: `${board.tab}:${machine.name}:roller:${rollerKey}`,
+                            boardTab: board.tab,
+                            boardLabel: board.label,
+                            machineName: machine.name,
+                            label: roller.displayName,
+                            runtimeHours: live.runtimeHours,
+                            limitHours: roller.limitHours,
+                            pct: live.pct,
+                            open: () => activateAttention(meta)
+                        });
+                    }
                 }
             }
         }
         return items.sort(
             (a, b) => b.runtimeHours / Math.max(b.limitHours, 0.001) - a.runtimeHours / Math.max(a.limitHours, 0.001)
         );
-    }, [sortedMachines, syncEpochMs, nowMs, buncherBoard]);
+    }, [plantAttention, nowMs, activateAttention]);
 
     const machineOptions = useMemo(
         () => sortedMachines.map((m) => ({ label: m.name, value: m.name })),
@@ -2198,13 +2402,10 @@ export default function PartsBoardPage() {
         }
     };
 
-    const processTabIndex = Math.max(
+    const activeBoardTab = processToBoardTab(processCd, processCd === 'STRANDING' ? strandLineCd : null);
+    const boardTabIndex = Math.max(
         0,
-        PROCESS_OPTIONS.findIndex((p) => p.code === processCd)
-    );
-    const strandLineTabIndex = Math.max(
-        0,
-        STRAND_LINE_OPTIONS.findIndex((p) => p.code === strandLineCd)
+        BOARD_TAB_OPTIONS.findIndex((p) => p.code === activeBoardTab)
     );
 
     const toggleBulkRoller = (rollerId: string, checked: boolean) => {
@@ -2500,88 +2701,76 @@ export default function PartsBoardPage() {
                         icon="pi pi-refresh"
                         rounded
                         loading={refreshing}
-                        onClick={() => loadDashboard(true, dbTarget)}
+                        onClick={() => {
+                            void loadDashboard(true, dbTarget);
+                            void loadPlantAttention(dbTarget);
+                        }}
                         tooltip="Refresh"
                     />
                 </div>
             </header>
 
-            <div className="pb-process-tabs">
-                <div className="pb-process-tabs__left">
-                    <TabView
-                        activeIndex={processTabIndex}
-                        onTabChange={(e) => {
-                            const next = PROCESS_OPTIONS[e.index]?.code;
-                            if (!next || next === processCd) return;
-                            loadGenRef.current += 1;
-                            processCdRef.current = next;
-                            setProcessCd(next);
-                            setAttentionExpanded(false);
-                        }}
-                    >
-                        {PROCESS_OPTIONS.map((p) => (
-                            <TabPanel key={p.code} header={p.label} />
-                        ))}
-                    </TabView>
-                    {processCd === 'STRANDING' ? (
-                        <TabView
-                            className="pb-process-tabs__line"
-                            activeIndex={strandLineTabIndex}
-                            onTabChange={(e) => {
-                                const next = STRAND_LINE_OPTIONS[e.index]?.code;
-                                if (!next || next === strandLineCd) return;
-                                loadGenRef.current += 1;
-                                strandLineCdRef.current = next;
-                                setStrandLineCd(next);
-                                setAttentionExpanded(false);
-                            }}
-                        >
-                            {STRAND_LINE_OPTIONS.map((p) => (
-                                <TabPanel key={p.code} header={p.label} />
+            <aside className="pb-attention" aria-label="Need attention">
+                <span className="pb-attention__title">Need attention</span>
+                {attentionItems.length === 0 ? (
+                    <span className="pb-attention__empty">None</span>
+                ) : (
+                    <>
+                        <ul className="pb-attention__list">
+                            {(attentionExpanded ? attentionItems : attentionItems.slice(0, 8)).map((item) => (
+                                <li key={item.key}>
+                                    <button
+                                        type="button"
+                                        className="pb-attention__item"
+                                        onClick={item.open}
+                                        title={`${item.boardLabel} · ${item.machineName} · ${item.label} · ${item.pct}% · ${formatRuntimeHms(item.runtimeHours)} / ${formatRuntimeHms(item.limitHours)}`}
+                                    >
+                                        <span className="pb-attention__board">{item.boardLabel}</span>
+                                        <span className="pb-attention__machine">{item.machineName}</span>
+                                        <span className="pb-attention__part">{item.label}</span>
+                                        <span className="pb-attention__pct">{item.pct}%</span>
+                                    </button>
+                                </li>
                             ))}
-                        </TabView>
-                    ) : null}
-                </div>
-                <aside className="pb-attention" aria-label="Need attention">
-                    <span className="pb-attention__title">Need attention</span>
-                    {attentionItems.length === 0 ? (
-                        <span className="pb-attention__empty">None</span>
-                    ) : (
-                        <>
-                            <ul className="pb-attention__list">
-                                {(attentionExpanded ? attentionItems : attentionItems.slice(0, 5)).map((item) => (
-                                    <li key={item.key}>
-                                        <button
-                                            type="button"
-                                            className="pb-attention__item"
-                                            onClick={item.open}
-                                            title={`${item.machineName} · ${item.label} · ${item.pct}% · ${formatRuntimeHms(item.runtimeHours)} / ${formatRuntimeHms(item.limitHours)}`}
-                                        >
-                                            <span className="pb-attention__machine">{item.machineName}</span>
-                                            <span className="pb-attention__part">{item.label}</span>
-                                            <span className="pb-attention__pct">{item.pct}%</span>
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                            {attentionItems.length > 5 ? (
-                                <button
-                                    type="button"
-                                    className="pb-attention__more"
-                                    onClick={() => setAttentionExpanded((v) => !v)}
-                                    aria-expanded={attentionExpanded}
-                                    title={
-                                        attentionExpanded
-                                            ? 'Show less'
-                                            : `Show ${attentionItems.length - 5} more`
-                                    }
-                                >
-                                    {attentionExpanded ? '−' : `++${attentionItems.length - 5}`}
-                                </button>
-                            ) : null}
-                        </>
-                    )}
-                </aside>
+                        </ul>
+                        {attentionItems.length > 8 ? (
+                            <button
+                                type="button"
+                                className="pb-attention__more"
+                                onClick={() => setAttentionExpanded((v) => !v)}
+                                aria-expanded={attentionExpanded}
+                                title={
+                                    attentionExpanded
+                                        ? 'Show less'
+                                        : `Show ${attentionItems.length - 8} more`
+                                }
+                            >
+                                {attentionExpanded ? '−' : `++${attentionItems.length - 8}`}
+                            </button>
+                        ) : null}
+                    </>
+                )}
+            </aside>
+
+            <div className="pb-process-tabs">
+                <TabView
+                    activeIndex={boardTabIndex}
+                    onTabChange={(e) => {
+                        const nextTab = BOARD_TAB_OPTIONS[e.index]?.code;
+                        if (!nextTab || nextTab === activeBoardTab) return;
+                        const mapped = boardTabToProcess(nextTab);
+                        loadGenRef.current += 1;
+                        processCdRef.current = mapped.processCd;
+                        strandLineCdRef.current = mapped.lineCd ?? 'BUNCHER';
+                        setProcessCd(mapped.processCd);
+                        setStrandLineCd(mapped.lineCd ?? 'BUNCHER');
+                        setAttentionExpanded(false);
+                    }}
+                >
+                    {BOARD_TAB_OPTIONS.map((p) => (
+                        <TabPanel key={p.code} header={p.label} />
+                    ))}
+                </TabView>
             </div>
 
             {layoutDirty ? (
@@ -3115,11 +3304,7 @@ export default function PartsBoardPage() {
                 <div className="flex flex-column gap-3">
                     <Message
                         severity="info"
-                        text={`Register a machine under ${PROCESS_OPTIONS.find((p) => p.code === processCd)?.label ?? processCd}${
-                            processCd === 'STRANDING'
-                                ? ` · ${STRAND_LINE_OPTIONS.find((p) => p.code === strandLineCd)?.label ?? strandLineCd}`
-                                : ''
-                        }. Then open the machine settings (cog) to add components.`}
+                        text={`Register a machine under ${boardTabLabel(activeBoardTab)}. Then open the machine settings (cog) to add components.`}
                     />
                     <div>
                         <label className="block mb-2 text-sm font-medium">Machine name</label>

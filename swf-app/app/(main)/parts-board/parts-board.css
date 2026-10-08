@@ -803,16 +803,6 @@
 
 .pb-process-tabs {
     flex-shrink: 0;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.5rem 1rem;
-}
-
-.pb-process-tabs__left {
-    min-width: 0;
-    flex: 1 1 auto;
 }
 
 .pb-process-tabs .p-tabview-nav {
@@ -824,27 +814,17 @@
     display: none;
 }
 
-.pb-process-tabs__line {
-    margin-top: -0.15rem;
-}
-
-.pb-process-tabs__line .p-tabview-nav-link {
-    font-size: 0.85rem;
-    padding: 0.55rem 0.9rem;
-}
-
 .pb-attention {
-    flex: 0 1 auto;
-    max-width: min(42rem, 100%);
+    flex-shrink: 0;
+    width: 100%;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.35rem 0.4rem;
-    padding: 0.35rem 0.55rem;
+    padding: 0.4rem 0.65rem;
     border: 1px solid color-mix(in srgb, var(--pb-over) 30%, var(--surface-border));
     border-radius: 8px;
     background: color-mix(in srgb, var(--pb-over-bg) 70%, var(--surface-0));
-    margin-left: auto;
 }
 
 .pb-attention__title {
@@ -878,7 +858,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    max-width: 11.5rem;
+    max-width: 16rem;
     border: 1px solid color-mix(in srgb, var(--pb-over) 35%, var(--surface-border));
     border-radius: 999px;
     padding: 0.2rem 0.45rem 0.2rem 0.4rem;
@@ -891,6 +871,16 @@
 .pb-attention__item:hover {
     border-color: var(--pb-over);
     background: #fff;
+}
+
+.pb-attention__board {
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #991b1b;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .pb-attention__machine {
