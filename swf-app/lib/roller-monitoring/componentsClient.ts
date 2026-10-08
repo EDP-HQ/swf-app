@@ -175,15 +175,17 @@ export async function fetchComponentsOnoff(
 
 function historyRowFromRecord(row: Record<string, unknown>): ComponentHistoryRow {
     const runtimeSec = rowNum(row, 'RUNTIME_SEC');
+    const use = rowStr(row, 'USE').toUpperCase();
     return {
         partId: rowStr(row, 'PART_ID'),
         partSeq: rowNum(row, 'PART_SEQ'),
         partType: rowStr(row, 'PART_TYPE'),
-        replaceDt: rowStr(row, 'Start_DT', 'START_DT'),
-        dismantleDt: rowStr(row, 'REPLACE_DT'),
+        // Installed = REPLACE_DT; Removed = DISMANTLE_DT (sp_Components_History).
+        replaceDt: rowStr(row, 'REPLACE_DT', 'Start_DT', 'START_DT'),
+        dismantleDt: rowStr(row, 'DISMANTLE_DT'),
         runtimeLimitHours: rowNum(row, 'RUNTIME_LIMIT_HOUR'),
         runtimeHours: runtimeSec / 3600,
-        isActive: false
+        isActive: use === 'Y'
     };
 }
 
@@ -192,7 +194,12 @@ export async function fetchComponentHistory(
     target = getRollerDbTarget(),
     options?: { partType?: string }
 ): Promise<ComponentHistoryRow[]> {
-    const url = `${resolveComponentsUrl('history', target)}`;
+    const machine = machineName.trim();
+    const partType = options?.partType?.trim() || '';
+    const qs = new URLSearchParams();
+    if (machine) qs.set('machineNm', machine);
+    if (partType) qs.set('partType', partType);
+    const url = `${resolveComponentsUrl('history', target)}?${qs.toString()}`;
 
     let res: Response;
     try {
@@ -220,13 +227,15 @@ export async function fetchComponentHistory(
         throw new Error(parseErrorMessage(body, res.status));
     }
 
-    const machine = machineName.trim();
-    const partType = options?.partType?.trim().toUpperCase();
+    const partTypeUpper = partType.toUpperCase();
     return asRecordArray(body)
-        .filter((row) => rowStr(row, 'MACHINE_NM', 'MACHINE_NAME') === machine)
-        .filter((row) => !partType || rowStr(row, 'PART_TYPE').toUpperCase() === partType)
+        .filter((row) => !machine || rowStr(row, 'MACHINE_NM', 'MACHINE_NAME') === machine)
+        .filter((row) => !partTypeUpper || rowStr(row, 'PART_TYPE').toUpperCase() === partTypeUpper)
         .map(historyRowFromRecord)
-        .sort((a, b) => (b.replaceDt || '').localeCompare(a.replaceDt || ''));
+        .sort((a, b) => {
+            if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+            return (b.replaceDt || '').localeCompare(a.replaceDt || '');
+        });
 }
 
 async function postComponentsEndpoint<T = unknown>(

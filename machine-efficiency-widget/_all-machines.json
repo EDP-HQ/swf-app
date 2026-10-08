@@ -32,6 +32,22 @@
         "machine":  "SWF 8X12HSP-3"
     },
     {
+        "process":  "DRAWING",
+        "machine":  "SWF 8X15HSP"
+    },
+    {
+        "process":  "DRAWING",
+        "machine":  "SWF Wet Drawing MC-1"
+    },
+    {
+        "process":  "DRAWING",
+        "machine":  "SWF Wet Drawing MC-2"
+    },
+    {
+        "process":  "STRANDING",
+        "machine":  "SWF 8X36F-1"
+    },
+    {
         "process":  "STRANDING",
         "machine":  "SWF 8X36F-2"
     },
@@ -53,15 +69,19 @@
     },
     {
         "process":  "STRANDING",
+        "machine":  "SWF BUN 350 (7)"
+    },
+    {
+        "process":  "STRANDING",
         "machine":  "SWF BUN 400-1 (19)"
     },
     {
         "process":  "STRANDING",
-        "machine":  "SWF BUN 500-1 (36)"
+        "machine":  "SWF BUN 500-2 (36, BUN 400 remodel)"
     },
     {
         "process":  "STRANDING",
-        "machine":  "SWF BUN 500-2 (36, BUN 400 remodel)"
+        "machine":  "SWF BUN 500-3 (7)"
     },
     {
         "process":  "STRANDING",

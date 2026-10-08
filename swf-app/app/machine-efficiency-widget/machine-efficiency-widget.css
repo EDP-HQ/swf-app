@@ -17,8 +17,8 @@
 }
 
 .mew--idle {
-    filter: blur(4px);
-    opacity: 0.72;
+    filter: blur(1.5px);
+    opacity: 0.9;
     pointer-events: auto;
 }
 
