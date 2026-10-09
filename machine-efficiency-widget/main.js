@@ -33,6 +33,14 @@ function createWindow() {
     }
   });
 
+  // Enforce again after create (some Windows builds still show title-bar buttons otherwise)
+  win.setMinimizable(false);
+  win.setMaximizable(false);
+  win.setFullScreenable(false);
+  win.setClosable(false);
+  win.setResizable(false);
+  win.removeMenu();
+
   // Block Alt+F4 / programmatic close (Task Manager can still kill the process)
   win.on('close', (e) => {
     e.preventDefault();
