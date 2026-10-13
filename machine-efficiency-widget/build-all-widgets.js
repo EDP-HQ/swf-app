@@ -28,12 +28,21 @@ if (!list.length) {
   process.exit(1);
 }
 
+function progressBar(done, total, width = 28) {
+  const filled = Math.round((done / total) * width);
+  const bar = '#'.repeat(filled) + '-'.repeat(Math.max(0, width - filled));
+  const pct = Math.round((done / total) * 100);
+  return `[${bar}] ${done}/${total} (${pct}%)`;
+}
+
 console.log(`Building ${list.length} widgets…\n`);
+console.log(progressBar(0, list.length));
 
 const results = [];
 for (let i = 0; i < list.length; i++) {
   const { machine, process: processCd } = list[i];
   console.log(`\n======== [${i + 1}/${list.length}] ${machine} (${processCd}) ========`);
+  console.log('Progress:', progressBar(i, list.length), '← building', machine);
   const r = spawnSync(process.execPath, [path.join(root, 'build-widget.js'), machine, processCd], {
     cwd: root,
     stdio: 'inherit',
@@ -42,6 +51,7 @@ for (let i = 0; i < list.length; i++) {
   const ok = r.status === 0;
   const exePath = path.join(root, 'dist', `${machine}.exe`);
   results.push({ machine, process: processCd, ok, exe: fs.existsSync(exePath) ? exePath : null });
+  console.log('Progress:', progressBar(i + 1, list.length), ok ? 'OK' : 'FAIL');
   if (!ok) {
     console.error('FAILED:', machine);
   }

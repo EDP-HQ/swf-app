@@ -17,8 +17,8 @@ function buildWidgetUrl() {
 function createWindow() {
   const machineName = config.machine || 'Machine Efficiency';
   const win = new BrowserWindow({
-    width: 360,
-    height: 380,
+    width: 320,
+    height: 340,
     resizable: false,
     maximizable: false,
     minimizable: false,
