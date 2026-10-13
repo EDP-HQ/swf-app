@@ -77,6 +77,10 @@
     },
     {
         "process":  "STRANDING",
+        "machine":  "SWF BUN 500-1 (36)"
+    },
+    {
+        "process":  "STRANDING",
         "machine":  "SWF BUN 500-2 (36, BUN 400 remodel)"
     },
     {
