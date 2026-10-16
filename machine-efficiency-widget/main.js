@@ -26,6 +26,10 @@ function createWindow() {
     closable: false,
     alwaysOnTop: true,
     autoHideMenuBar: true,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: false,
     title: machineName,
     webPreferences: {
       nodeIntegration: false,

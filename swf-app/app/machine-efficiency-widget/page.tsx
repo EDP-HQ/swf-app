@@ -13,8 +13,8 @@ import type { ProcessCd, ProductionRun } from '@/lib/machine-efficiency/types';
 import './machine-efficiency-widget.css';
 
 const AUTO_REFRESH_MS = 30_000;
-/** Blur after no hover and no window focus for this long. */
-const IDLE_BLUR_MS = 2_000;
+/** After no hover and no window focus, hide everything except the PE number. */
+const IDLE_PE_ONLY_MS = 2_000;
 
 function todayYmd(): string {
     const d = new Date();
@@ -38,31 +38,31 @@ export default function MachineEfficiencyWidgetPage() {
     const [error, setError] = useState<string | null>(null);
     const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
     const [hydrated, setHydrated] = useState(false);
-    const [idleBlurred, setIdleBlurred] = useState(false);
+    const [idlePeOnly, setIdlePeOnly] = useState(false);
     const hoveringRef = useRef(false);
     const focusedRef = useRef(true);
-    const blurTimerRef = useRef<number | null>(null);
+    const idleTimerRef = useRef<number | null>(null);
 
-    const clearBlurTimer = useCallback(() => {
-        if (blurTimerRef.current != null) {
-            window.clearTimeout(blurTimerRef.current);
-            blurTimerRef.current = null;
+    const clearIdleTimer = useCallback(() => {
+        if (idleTimerRef.current != null) {
+            window.clearTimeout(idleTimerRef.current);
+            idleTimerRef.current = null;
         }
     }, []);
 
     const markActive = useCallback(() => {
-        clearBlurTimer();
-        setIdleBlurred(false);
-    }, [clearBlurTimer]);
+        clearIdleTimer();
+        setIdlePeOnly(false);
+    }, [clearIdleTimer]);
 
-    const scheduleIdleBlur = useCallback(() => {
-        clearBlurTimer();
+    const scheduleIdlePeOnly = useCallback(() => {
+        clearIdleTimer();
         if (hoveringRef.current || focusedRef.current) return;
-        blurTimerRef.current = window.setTimeout(() => {
-            setIdleBlurred(true);
-            blurTimerRef.current = null;
-        }, IDLE_BLUR_MS);
-    }, [clearBlurTimer]);
+        idleTimerRef.current = window.setTimeout(() => {
+            setIdlePeOnly(true);
+            idleTimerRef.current = null;
+        }, IDLE_PE_ONLY_MS);
+    }, [clearIdleTimer]);
 
     useEffect(() => {
         const onFocus = () => {
@@ -71,16 +71,16 @@ export default function MachineEfficiencyWidgetPage() {
         };
         const onBlur = () => {
             focusedRef.current = false;
-            scheduleIdleBlur();
+            scheduleIdlePeOnly();
         };
         window.addEventListener('focus', onFocus);
         window.addEventListener('blur', onBlur);
         return () => {
             window.removeEventListener('focus', onFocus);
             window.removeEventListener('blur', onBlur);
-            clearBlurTimer();
+            clearIdleTimer();
         };
-    }, [markActive, scheduleIdleBlur, clearBlurTimer]);
+    }, [markActive, scheduleIdlePeOnly, clearIdleTimer]);
 
     useEffect(() => {
         const cfg = readPinnedConfig();
@@ -143,14 +143,14 @@ export default function MachineEfficiencyWidgetPage() {
 
     return (
         <main
-            className={`mew${idleBlurred ? ' mew--idle' : ''}`}
+            className={`mew${idlePeOnly ? ' mew--idle' : ''}`}
             onMouseEnter={() => {
                 hoveringRef.current = true;
                 markActive();
             }}
             onMouseLeave={() => {
                 hoveringRef.current = false;
-                scheduleIdleBlur();
+                scheduleIdlePeOnly();
             }}
             onMouseDown={markActive}
             onFocusCapture={markActive}
