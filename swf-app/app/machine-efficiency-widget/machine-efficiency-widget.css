@@ -239,12 +239,11 @@ body {
     color: #0f172a;
 }
 
-/* Idle: only PE number remains visible */
+/* Idle: only PE number + "Performance Efficiency" label remain visible */
 .mew--idle .mew__meta,
 .mew--idle .mew__error,
 .mew--idle .mew__empty,
 .mew--idle .mew-card__top,
-.mew--idle .mew-card__label,
 .mew--idle .mew-card__bar,
 .mew--idle .mew-card__stats {
     opacity: 0;
@@ -269,4 +268,17 @@ body {
         0 0 4px #fff,
         0 0 10px #fff,
         0 1px 2px rgba(15, 23, 42, 0.35);
+}
+
+.mew--idle .mew-card__label {
+    opacity: 1;
+    max-height: none;
+    margin-bottom: 0;
+    margin-top: 0.25rem;
+    color: #0f172a;
+    text-shadow:
+        0 0 4px #fff,
+        0 0 8px #fff,
+        0 1px 2px rgba(15, 23, 42, 0.25);
+    -webkit-app-region: drag;
 }
