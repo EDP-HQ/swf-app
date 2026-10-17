@@ -19,6 +19,8 @@ function formatTargetDisplay(value) {
     if (value == null || value === '') return '';
     return String(value)
         .replace(/FDW/gi, '')
+        .replace(/\s*,\s*,+/g, ',')   // drop empty slots left by FDW (e.g. "G, , 240G")
+        .replace(/^[,\s]+|[,\s]+$/g, '')
         .replace(/[_\-\s]{2,}/g, ' ')
         .replace(/^[\s_\-]+|[\s_\-]+$/g, '')
         .trim();
