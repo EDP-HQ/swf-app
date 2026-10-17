@@ -14,6 +14,16 @@ import './material-verification.css';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
+/** Hide FDW from TARGET so long labels fit in the 7/5 rack columns. */
+function formatTargetDisplay(value) {
+    if (value == null || value === '') return '';
+    return String(value)
+        .replace(/FDW/gi, '')
+        .replace(/[_\-\s]{2,}/g, ' ')
+        .replace(/^[\s_\-]+|[\s_\-]+$/g, '')
+        .trim();
+}
+
 const MaterialVerificationDashboard = () => {
     const [loading, setLoading] = useState(false);
     const [verificationData, setVerificationData] = useState([]);
@@ -197,7 +207,7 @@ const MaterialVerificationDashboard = () => {
                     const isEmpty = item.TOTAL_CNT === 0 || item.TOTAL_CNT === null;
                     return (
                         <div className={`bin-location-target-cell ${isFlagged1 ? 'flagged' : ''} ${isEmpty ? 'empty-rack' : ''}`}>
-                            {item.BIN_LOCATION_TARGET}
+                            {formatTargetDisplay(item.BIN_LOCATION_TARGET)}
                         </div>
                     );
                 }
@@ -300,7 +310,7 @@ const MaterialVerificationDashboard = () => {
                     const isEmpty = item.TOTAL_CNT === 0 || item.TOTAL_CNT === null;
                     return (
                         <div className={`bin-location-target-cell ${isFlagged1 ? 'flagged' : ''} ${isEmpty ? 'empty-rack' : ''}`}>
-                            {item.BIN_LOCATION_TARGET}
+                            {formatTargetDisplay(item.BIN_LOCATION_TARGET)}
                         </div>
                     );
                 }
@@ -367,7 +377,7 @@ const MaterialVerificationDashboard = () => {
         const isFlagged1 = rowData.FLAG1 === 'N';
         return (
             <div className={`bin-location-target-cell ${isFlagged1 ? 'flagged' : ''}`}>
-                {rowData.BIN_LOCATION_TARGET}
+                {formatTargetDisplay(rowData.BIN_LOCATION_TARGET)}
             </div>
         );
     };
