@@ -40,7 +40,6 @@ export default function MachineEfficiencyWidgetPage() {
     const [hydrated, setHydrated] = useState(false);
     const [idlePeOnly, setIdlePeOnly] = useState(false);
     const hoveringRef = useRef(false);
-    const focusedRef = useRef(true);
     const idleTimerRef = useRef<number | null>(null);
 
     const clearIdleTimer = useCallback(() => {
@@ -55,26 +54,27 @@ export default function MachineEfficiencyWidgetPage() {
         setIdlePeOnly(false);
     }, [clearIdleTimer]);
 
+    /**
+     * Idle when the pointer is outside the widget. Do not require window blur —
+     * always-on-top Electron on Windows often never blurs, which left idle stuck off.
+     */
     const scheduleIdlePeOnly = useCallback(() => {
         clearIdleTimer();
-        if (hoveringRef.current || focusedRef.current) return;
+        if (hoveringRef.current) return;
         idleTimerRef.current = window.setTimeout(() => {
+            if (hoveringRef.current) return;
             setIdlePeOnly(true);
             idleTimerRef.current = null;
         }, IDLE_PE_ONLY_MS);
     }, [clearIdleTimer]);
 
     useEffect(() => {
-        const onFocus = () => {
-            focusedRef.current = true;
-            markActive();
-        };
-        const onBlur = () => {
-            focusedRef.current = false;
-            scheduleIdlePeOnly();
-        };
+        const onFocus = () => markActive();
+        const onBlur = () => scheduleIdlePeOnly();
         window.addEventListener('focus', onFocus);
         window.addEventListener('blur', onBlur);
+        // Start idle shortly after open if the cursor is not over the widget
+        scheduleIdlePeOnly();
         return () => {
             window.removeEventListener('focus', onFocus);
             window.removeEventListener('blur', onBlur);
