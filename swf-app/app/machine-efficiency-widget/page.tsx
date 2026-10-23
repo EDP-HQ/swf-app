@@ -13,7 +13,7 @@ import type { ProcessCd, ProductionRun } from '@/lib/machine-efficiency/types';
 import './machine-efficiency-widget.css';
 
 const AUTO_REFRESH_MS = 30_000;
-/** After no hover and no window focus, hide everything except the PE number. */
+/** After no interaction (touch/mouse), hide everything except the PE number. */
 const IDLE_PE_ONLY_MS = 2_000;
 
 function todayYmd(): string {
@@ -39,7 +39,6 @@ export default function MachineEfficiencyWidgetPage() {
     const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
     const [hydrated, setHydrated] = useState(false);
     const [idlePeOnly, setIdlePeOnly] = useState(false);
-    const hoveringRef = useRef(false);
     const idleTimerRef = useRef<number | null>(null);
 
     const clearIdleTimer = useCallback(() => {
@@ -49,38 +48,27 @@ export default function MachineEfficiencyWidgetPage() {
         }
     }, []);
 
-    const markActive = useCallback(() => {
-        clearIdleTimer();
-        setIdlePeOnly(false);
-    }, [clearIdleTimer]);
-
     /**
-     * Idle when the pointer is outside the widget. Do not require window blur —
-     * always-on-top Electron on Windows often never blurs, which left idle stuck off.
+     * Idle after inactivity — not hover/focus. Touchscreens keep a stuck "hover"
+     * after a tap, so mouseleave never fires and hover-based idle never starts.
      */
     const scheduleIdlePeOnly = useCallback(() => {
         clearIdleTimer();
-        if (hoveringRef.current) return;
         idleTimerRef.current = window.setTimeout(() => {
-            if (hoveringRef.current) return;
             setIdlePeOnly(true);
             idleTimerRef.current = null;
         }, IDLE_PE_ONLY_MS);
     }, [clearIdleTimer]);
 
-    useEffect(() => {
-        const onFocus = () => markActive();
-        const onBlur = () => scheduleIdlePeOnly();
-        window.addEventListener('focus', onFocus);
-        window.addEventListener('blur', onBlur);
-        // Start idle shortly after open if the cursor is not over the widget
+    const markActive = useCallback(() => {
+        setIdlePeOnly(false);
         scheduleIdlePeOnly();
-        return () => {
-            window.removeEventListener('focus', onFocus);
-            window.removeEventListener('blur', onBlur);
-            clearIdleTimer();
-        };
-    }, [markActive, scheduleIdlePeOnly, clearIdleTimer]);
+    }, [scheduleIdlePeOnly]);
+
+    useEffect(() => {
+        scheduleIdlePeOnly();
+        return () => clearIdleTimer();
+    }, [scheduleIdlePeOnly, clearIdleTimer]);
 
     useEffect(() => {
         const cfg = readPinnedConfig();
@@ -144,15 +132,8 @@ export default function MachineEfficiencyWidgetPage() {
     return (
         <main
             className={`mew${idlePeOnly ? ' mew--idle' : ''}`}
-            onMouseEnter={() => {
-                hoveringRef.current = true;
-                markActive();
-            }}
-            onMouseLeave={() => {
-                hoveringRef.current = false;
-                scheduleIdlePeOnly();
-            }}
-            onMouseDown={markActive}
+            onPointerDown={markActive}
+            onPointerMove={markActive}
             onFocusCapture={markActive}
         >
             <div className="mew__meta">
