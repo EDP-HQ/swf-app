@@ -45,6 +45,7 @@ export type RollerApiEndpoint =
     | 'activelist'
     | 'currentruntime'
     | 'history'
+    | 'limithistory'
     | 'updateruntimelimit'
     | 'batchupdateruntimelimit'
     | 'updateruntime'

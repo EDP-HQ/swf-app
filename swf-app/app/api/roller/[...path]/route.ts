@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { proxyErrorPayload, proxySwfApi } from '@/lib/api/swfApiProxy';
 
-const ALLOWED_GET = new Set(['onoff', 'list', 'activelist', 'currentruntime', 'history']);
+const ALLOWED_GET = new Set([
+    'onoff',
+    'list',
+    'activelist',
+    'currentruntime',
+    'history',
+    'limithistory'
+]);
 const ALLOWED_POST = new Set(['updateruntimelimit', 'batchupdateruntimelimit', 'updateruntime', 'replace']);
 
 function joinPath(segments: string[] | undefined): string {

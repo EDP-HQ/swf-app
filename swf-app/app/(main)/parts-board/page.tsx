@@ -35,10 +35,12 @@ import {
     batchUpdateRollerRuntimeLimits,
     fetchRollerDashboard,
     fetchRollerHistory,
+    fetchRollerLimitHistory,
     replaceRoller,
     updateRollerRuntime,
     updateRollerRuntimeLimit,
-    type RollerHistoryRow
+    type RollerHistoryRow,
+    type RollerLimitHistoryRow
 } from '@/lib/roller-monitoring/rollerClient';
 import {
     COMPONENT_DEFAULT_COMPANY,
@@ -50,12 +52,14 @@ import {
     fetchComponents,
     fetchComponentsOnoff,
     fetchComponentHistory,
+    fetchComponentLimitHistory,
     insertComponent,
     removeComponent,
     replaceComponent,
     updateComponentDetails,
     updateComponentRuntimeLimit,
-    type ComponentHistoryRow
+    type ComponentHistoryRow,
+    type ComponentLimitHistoryRow
 } from '@/lib/roller-monitoring/componentsClient';
 import {
     clampCardSize,
@@ -360,6 +364,113 @@ function RollerHistoryTable({
                                     rounded
                                 />
                             </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+function formatLimitHours(hours: number | null | undefined): string {
+    if (hours == null || !Number.isFinite(hours)) return '—';
+    return `${hours}h`;
+}
+
+function ComponentLimitHistoryTable({
+    rows,
+    loading,
+    error
+}: {
+    rows: ComponentLimitHistoryRow[];
+    loading: boolean;
+    error: string | null;
+}) {
+    if (loading) {
+        return (
+            <div className="pb-comp-history__loading">
+                <ProgressSpinner style={{ width: '1.75rem', height: '1.75rem' }} />
+            </div>
+        );
+    }
+
+    if (error) {
+        return <Message severity="warn" text={error} className="w-full" />;
+    }
+
+    if (rows.length === 0) {
+        return <p className="pb-comp-history__empty">No limit changes yet for this component.</p>;
+    }
+
+    return (
+        <div className="pb-comp-history__wrap">
+            <table className="pb-comp-history__table">
+                <thead>
+                    <tr>
+                        <th>Changed</th>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((row) => (
+                        <tr key={row.histId}>
+                            <td>{formatReplaceDt(row.changedDt)}</td>
+                            <td>{formatLimitHours(row.oldLimitHours)}</td>
+                            <td>{formatLimitHours(row.newLimitHours)}</td>
+                            <td>{row.changedBy || '—'}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+function RollerLimitHistoryTable({
+    rows,
+    loading,
+    error
+}: {
+    rows: RollerLimitHistoryRow[];
+    loading: boolean;
+    error: string | null;
+}) {
+    if (loading) {
+        return (
+            <div className="pb-comp-history__loading">
+                <ProgressSpinner style={{ width: '1.75rem', height: '1.75rem' }} />
+            </div>
+        );
+    }
+
+    if (error) {
+        return <Message severity="warn" text={error} className="w-full" />;
+    }
+
+    if (rows.length === 0) {
+        return <p className="pb-comp-history__empty">No limit changes yet for this roller.</p>;
+    }
+
+    return (
+        <div className="pb-comp-history__wrap">
+            <table className="pb-comp-history__table">
+                <thead>
+                    <tr>
+                        <th>Changed</th>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((row) => (
+                        <tr key={row.histId}>
+                            <td>{formatReplaceDt(row.changedDt)}</td>
+                            <td>{formatLimitHours(row.oldLimitHours)}</td>
+                            <td>{formatLimitHours(row.newLimitHours)}</td>
+                            <td>{row.changedBy || '—'}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -981,9 +1092,15 @@ export default function PartsBoardPage() {
     const [componentHistory, setComponentHistory] = useState<ComponentHistoryRow[]>([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyError, setHistoryError] = useState<string | null>(null);
+    const [componentLimitHistory, setComponentLimitHistory] = useState<ComponentLimitHistoryRow[]>([]);
+    const [limitHistoryLoading, setLimitHistoryLoading] = useState(false);
+    const [limitHistoryError, setLimitHistoryError] = useState<string | null>(null);
     const [rollerHistory, setRollerHistory] = useState<RollerHistoryRow[]>([]);
     const [rollerHistoryLoading, setRollerHistoryLoading] = useState(false);
     const [rollerHistoryError, setRollerHistoryError] = useState<string | null>(null);
+    const [rollerLimitHistory, setRollerLimitHistory] = useState<RollerLimitHistoryRow[]>([]);
+    const [rollerLimitHistoryLoading, setRollerLimitHistoryLoading] = useState(false);
+    const [rollerLimitHistoryError, setRollerLimitHistoryError] = useState<string | null>(null);
     const [bulkEditOpen, setBulkEditOpen] = useState(false);
     const [bulkMachineFilter, setBulkMachineFilter] = useState('');
     const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
@@ -1401,6 +1518,40 @@ export default function PartsBoardPage() {
         [dbTarget]
     );
 
+    const loadComponentLimitHistory = useCallback(
+        async (options: { partId?: string; machineName?: string; partType?: string }, target = dbTarget) => {
+            setLimitHistoryLoading(true);
+            setLimitHistoryError(null);
+            try {
+                const rows = await fetchComponentLimitHistory(target, options);
+                setComponentLimitHistory(rows);
+            } catch (e) {
+                setComponentLimitHistory([]);
+                setLimitHistoryError(e instanceof Error ? e.message : 'Failed to load limit history');
+            } finally {
+                setLimitHistoryLoading(false);
+            }
+        },
+        [dbTarget]
+    );
+
+    const loadRollerLimitHistory = useCallback(
+        async (options: { rollerId?: string; binLocation?: string }, target = dbTarget) => {
+            setRollerLimitHistoryLoading(true);
+            setRollerLimitHistoryError(null);
+            try {
+                const rows = await fetchRollerLimitHistory(target, options);
+                setRollerLimitHistory(rows);
+            } catch (e) {
+                setRollerLimitHistory([]);
+                setRollerLimitHistoryError(e instanceof Error ? e.message : 'Failed to load limit history');
+            } finally {
+                setRollerLimitHistoryLoading(false);
+            }
+        },
+        [dbTarget]
+    );
+
     const fullscreenMachine = useMemo(
         () => (fullscreenMachineName ? machines.find((m) => m.name === fullscreenMachineName) ?? null : null),
         [machines, fullscreenMachineName]
@@ -1563,38 +1714,63 @@ export default function PartsBoardPage() {
             setComponentHistory([]);
             setHistoryError(null);
             setHistoryLoading(false);
+            setComponentLimitHistory([]);
+            setLimitHistoryError(null);
+            setLimitHistoryLoading(false);
             if (!selectedPart || selectedPart.kind !== 'roller') return;
 
             const bin = selectedPart.roller.binLocation;
-            if (!bin) {
+            const rollerId = selectedPart.roller.rollerId;
+            if (!bin && !rollerId) {
                 setRollerHistory([]);
                 setRollerHistoryError(null);
+                setRollerLimitHistory([]);
+                setRollerLimitHistoryError(null);
                 return;
             }
-            void loadRollerHistory(bin);
+            if (bin) void loadRollerHistory(bin);
+            else {
+                setRollerHistory([]);
+                setRollerHistoryError(null);
+            }
+            void loadRollerLimitHistory({ rollerId: rollerId || undefined, binLocation: bin || undefined });
             return;
         }
 
         setRollerHistory([]);
         setRollerHistoryError(null);
         setRollerHistoryLoading(false);
+        setRollerLimitHistory([]);
+        setRollerLimitHistoryError(null);
+        setRollerLimitHistoryLoading(false);
 
         const partType = selectedPart.part.partType || formatPartTypeLabel(selectedPart.part);
         if (!selectedPart.part.partId || !partType) {
             setComponentHistory([]);
             setHistoryError(null);
+            setComponentLimitHistory([]);
+            setLimitHistoryError(null);
             return;
         }
 
         void loadComponentHistory(selectedPart.machine.name, partType, selectedPart.part.partId);
-    }, [selectedPart, loadComponentHistory, loadRollerHistory]);
+        void loadComponentLimitHistory({
+            partId: selectedPart.part.partId,
+            machineName: selectedPart.machine.name,
+            partType
+        });
+    }, [selectedPart, loadComponentHistory, loadComponentLimitHistory, loadRollerHistory, loadRollerLimitHistory]);
 
     const closeEdit = () => {
         setSelectedPart(null);
         setComponentHistory([]);
         setHistoryError(null);
+        setComponentLimitHistory([]);
+        setLimitHistoryError(null);
         setRollerHistory([]);
         setRollerHistoryError(null);
+        setRollerLimitHistory([]);
+        setRollerLimitHistoryError(null);
         setGearboxSpares([]);
         setGearboxCurrent(null);
         setSpareGearboxId(null);
@@ -1614,6 +1790,10 @@ export default function PartsBoardPage() {
             try {
                 await updateRollerRuntimeLimit(selectedPart.roller.rollerId, limitInput, dbTarget);
                 toast.current?.show({ severity: 'success', summary: 'Limit saved', life: 3000 });
+                await loadRollerLimitHistory({
+                    rollerId: selectedPart.roller.rollerId,
+                    binLocation: selectedPart.roller.binLocation || undefined
+                });
                 closeEdit();
                 await loadDashboard(true, dbTarget);
             } catch (e) {
@@ -1641,6 +1821,11 @@ export default function PartsBoardPage() {
             const partType = selectedPart.part.partType || formatPartTypeLabel(selectedPart.part);
             if (partType) {
                 await loadComponentHistory(selectedPart.machine.name, partType, selectedPart.part.partId);
+                await loadComponentLimitHistory({
+                    partId: selectedPart.part.partId,
+                    machineName: selectedPart.machine.name,
+                    partType
+                });
             }
             closeEdit();
             await loadDashboard(true, dbTarget);
@@ -3037,6 +3222,31 @@ export default function PartsBoardPage() {
                         </div>
                         <div className="pb-comp-history">
                             <div className="pb-comp-history__head">
+                                <span className="font-semibold text-sm">Limit history</span>
+                                <Button
+                                    icon="pi pi-refresh"
+                                    rounded
+                                    text
+                                    size="small"
+                                    loading={rollerLimitHistoryLoading}
+                                    disabled={!selectedPart.roller.rollerId && !selectedPart.roller.binLocation}
+                                    onClick={() => {
+                                        void loadRollerLimitHistory({
+                                            rollerId: selectedPart.roller.rollerId || undefined,
+                                            binLocation: selectedPart.roller.binLocation || undefined
+                                        });
+                                    }}
+                                    aria-label="Refresh limit history"
+                                />
+                            </div>
+                            <RollerLimitHistoryTable
+                                rows={rollerLimitHistory}
+                                loading={rollerLimitHistoryLoading}
+                                error={rollerLimitHistoryError}
+                            />
+                        </div>
+                        <div className="pb-comp-history">
+                            <div className="pb-comp-history__head">
                                 <span className="font-semibold text-sm">Replace history</span>
                                 <Button
                                     icon="pi pi-refresh"
@@ -3222,6 +3432,34 @@ export default function PartsBoardPage() {
                                 loading={saving}
                                 onClick={() => setConfirmRemove({ kind: 'component' })}
                                 disabled={!selectedPart.part.partId}
+                            />
+                        </div>
+                        <div className="pb-comp-history">
+                            <div className="pb-comp-history__head">
+                                <span className="font-semibold text-sm">Limit history</span>
+                                <Button
+                                    icon="pi pi-refresh"
+                                    rounded
+                                    text
+                                    size="small"
+                                    loading={limitHistoryLoading}
+                                    disabled={!selectedPart.part.partId}
+                                    onClick={() => {
+                                        const partType =
+                                            selectedPart.part.partType || formatPartTypeLabel(selectedPart.part);
+                                        void loadComponentLimitHistory({
+                                            partId: selectedPart.part.partId,
+                                            machineName: selectedPart.machine.name,
+                                            partType: partType || undefined
+                                        });
+                                    }}
+                                    aria-label="Refresh limit history"
+                                />
+                            </div>
+                            <ComponentLimitHistoryTable
+                                rows={componentLimitHistory}
+                                loading={limitHistoryLoading}
+                                error={limitHistoryError}
                             />
                         </div>
                         <div className="pb-comp-history">

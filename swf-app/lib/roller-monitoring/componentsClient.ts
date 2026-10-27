@@ -7,6 +7,7 @@ import type { MachineFixedPartKey } from './types';
 export type ComponentsApiEndpoint =
     | 'select'
     | 'history'
+    | 'limithistory'
     | 'onoff'
     | 'replace'
     | 'remove'
@@ -24,6 +25,18 @@ export type ComponentHistoryRow = {
     runtimeLimitHours: number;
     runtimeHours: number;
     isActive: boolean;
+};
+
+export type ComponentLimitHistoryRow = {
+    histId: number;
+    partId: string;
+    machineNm: string;
+    partType: string;
+    partSeq: number;
+    oldLimitHours: number | null;
+    newLimitHours: number;
+    changedDt: string;
+    changedBy: string;
 };
 
 const DEFAULT_SWF_API = 'http://127.0.0.1:3200';
@@ -239,6 +252,69 @@ export async function fetchComponentHistory(
             if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
             return (b.replaceDt || '').localeCompare(a.replaceDt || '');
         });
+}
+
+function limitHistoryRowFromRecord(row: Record<string, unknown>): ComponentLimitHistoryRow {
+    const oldRaw = row.OLD_LIMIT_HOUR ?? row.old_limit_hour ?? row.oldLimitHour;
+    const oldLimit =
+        oldRaw == null || oldRaw === ''
+            ? null
+            : Number(oldRaw);
+    return {
+        histId: rowNum(row, 'HIST_ID'),
+        partId: rowStr(row, 'PART_ID'),
+        machineNm: rowStr(row, 'MACHINE_NM'),
+        partType: rowStr(row, 'PART_TYPE'),
+        partSeq: rowNum(row, 'PART_SEQ'),
+        oldLimitHours: Number.isFinite(oldLimit as number) ? (oldLimit as number) : null,
+        newLimitHours: rowNum(row, 'NEW_LIMIT_HOUR'),
+        changedDt: rowStr(row, 'CHANGED_DT'),
+        changedBy: rowStr(row, 'CHANGED_BY')
+    };
+}
+
+export async function fetchComponentLimitHistory(
+    target = getRollerDbTarget(),
+    options: { partId?: string; machineName?: string; partType?: string }
+): Promise<ComponentLimitHistoryRow[]> {
+    const partId = options.partId?.trim() || '';
+    const machine = options.machineName?.trim() || '';
+    const partType = options.partType?.trim() || '';
+    if (!partId && !machine) {
+        throw new Error('partId or machineName required for limit history');
+    }
+
+    const qs = new URLSearchParams();
+    if (partId) qs.set('partId', partId);
+    if (machine) qs.set('machineNm', machine);
+    if (partType) qs.set('partType', partType);
+    const url = `${resolveComponentsUrl('limithistory', target)}?${qs.toString()}`;
+
+    let res: Response;
+    try {
+        res = await fetch(url, {
+            cache: 'no-store',
+            headers: { Accept: 'application/json' }
+        });
+    } catch (e) {
+        const detail = e instanceof Error ? e.message : 'Network error';
+        throw new Error(`Cannot reach API for limit history (${detail})`);
+    }
+
+    let body: unknown = null;
+    try {
+        body = await res.json();
+    } catch {
+        body = null;
+    }
+
+    if (!res.ok) {
+        throw new Error(parseErrorMessage(body, res.status));
+    }
+
+    return asRecordArray(body)
+        .map(limitHistoryRowFromRecord)
+        .sort((a, b) => (b.changedDt || '').localeCompare(a.changedDt || ''));
 }
 
 async function postComponentsEndpoint<T = unknown>(

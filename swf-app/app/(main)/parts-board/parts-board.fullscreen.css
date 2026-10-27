@@ -290,6 +290,10 @@
     padding-top: 0.75rem;
 }
 
+.pb-comp-history + .pb-comp-history {
+    margin-top: 0.75rem;
+}
+
 .pb-comp-history__head {
     display: flex;
     align-items: center;

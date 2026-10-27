@@ -17,6 +17,16 @@ export type RollerHistoryRow = {
     isActive: boolean;
 };
 
+export type RollerLimitHistoryRow = {
+    histId: number;
+    rollerId: string;
+    binLocation: string;
+    oldLimitHours: number | null;
+    newLimitHours: number;
+    changedDt: string;
+    changedBy: string;
+};
+
 
 
 const DEFAULT_SWF_API = 'http://127.0.0.1:3200';
@@ -269,6 +279,58 @@ export async function fetchRollerHistory(
         .filter((row) => rowStr(row, 'BIN_LOCATION_CD') === bin)
         .map(rollerHistoryFromRow)
         .sort((a, b) => (b.replaceDt || '').localeCompare(a.replaceDt || ''));
+}
+
+function rollerLimitHistoryFromRow(row: Record<string, unknown>): RollerLimitHistoryRow {
+    const oldRaw = row.OLD_LIMIT_HOUR ?? row.old_limit_hour ?? row.oldLimitHour;
+    const oldLimit = oldRaw == null || oldRaw === '' ? null : Number(oldRaw);
+    return {
+        histId: rowNum(row, 'HIST_ID'),
+        rollerId: rowStr(row, 'ROLLER_ID'),
+        binLocation: rowStr(row, 'BIN_LOCATION_CD'),
+        oldLimitHours: Number.isFinite(oldLimit as number) ? (oldLimit as number) : null,
+        newLimitHours: rowNum(row, 'NEW_LIMIT_HOUR'),
+        changedDt: rowStr(row, 'CHANGED_DT'),
+        changedBy: rowStr(row, 'CHANGED_BY')
+    };
+}
+
+export async function fetchRollerLimitHistory(
+    target = getRollerDbTarget(),
+    options: { rollerId?: string; binLocation?: string }
+): Promise<RollerLimitHistoryRow[]> {
+    const rollerId = options.rollerId?.trim() || '';
+    const bin = options.binLocation?.trim() || '';
+    if (!rollerId && !bin) {
+        throw new Error('rollerId or binLocation required for limit history');
+    }
+    const qs = new URLSearchParams();
+    if (rollerId) qs.set('rollerId', rollerId);
+    if (bin) qs.set('binLocation', bin);
+    const base = resolveRollerUrl('limithistory', target);
+    const url = `${base}?${qs.toString()}`;
+
+    let res: Response;
+    try {
+        res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } });
+    } catch (e) {
+        const detail = e instanceof Error ? e.message : 'Network error';
+        throw new Error(`Cannot reach API for roller limit history (${detail})`);
+    }
+
+    let body: unknown = null;
+    try {
+        body = await res.json();
+    } catch {
+        body = null;
+    }
+    if (!res.ok) {
+        throw new Error(parseErrorMessage(body, res.status));
+    }
+
+    return asRecordArray(body)
+        .map(rollerLimitHistoryFromRow)
+        .sort((a, b) => (b.changedDt || '').localeCompare(a.changedDt || ''));
 }
 
 export async function replaceRoller(binLocation: string, target = getRollerDbTarget()): Promise<void> {

@@ -4,6 +4,7 @@ import { proxyErrorPayload, proxySwfApi } from '@/lib/api/swfApiProxy';
 const ALLOWED_GET = new Set([
     'select',
     'history',
+    'limithistory',
     'onoff',
     'runtime-worker',
     'machines',
