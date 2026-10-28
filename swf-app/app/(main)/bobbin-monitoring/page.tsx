@@ -615,7 +615,7 @@ function BobbinScrapPendingDialog({
             blockScroll
             className="bobbin-scrap-popup"
             contentClassName="bobbin-scrap-popup__content p-0"
-            style={{ width: 'min(92vw, 21rem)' }}
+            style={{ width: 'min(94vw, 32rem)' }}
             draggable={false}
             resizable={false}
         >
@@ -627,8 +627,8 @@ function BobbinScrapPendingDialog({
             >
                 <div
                     className={`bobbin-scrap-countdown-ring bobbin-scrap-countdown-ring--popup${
-                        pending.phase === 'scraping' ? ' bobbin-scrap-countdown-ring--scraping' : ''
-                    }`}
+                        isCountdown && secondsLeft > 0 ? ' bobbin-scrap-countdown-ring--tick' : ''
+                    }${pending.phase === 'scraping' ? ' bobbin-scrap-countdown-ring--scraping' : ''}`}
                     style={{ ['--scrap-ring-progress' as string]: String(ringProgress) }}
                     aria-hidden
                 >
@@ -646,7 +646,7 @@ function BobbinScrapPendingDialog({
                 </div>
                 <h3 className="bobbin-scrap-popup__title m-0">Scrap all…</h3>
                 <p className="bobbin-scrap-popup__barcode bobbin-mono-value m-0 mt-2">{pending.barcode}</p>
-                <p className="bobbin-scrap-popup__detail text-color-secondary mt-2 mb-0 line-height-3">
+                <p className="bobbin-scrap-popup__detail mt-2 mb-0 line-height-3">
                     {pending.phase === 'scraping'
                         ? `Scrapping ${pending.plNos.length} lot${pending.plNos.length === 1 ? '' : 's'}`
                         : `${pending.plNos.length} lot${pending.plNos.length === 1 ? '' : 's'} in ${secondsLeft}s`}
@@ -656,7 +656,7 @@ function BobbinScrapPendingDialog({
                     <Button
                         label="Cancel"
                         icon="pi pi-times"
-                        severity="danger"
+                        severity="secondary"
                         outlined
                         className="bobbin-scrap-popup__cancel mt-4 w-full"
                         onClick={onCancel}
