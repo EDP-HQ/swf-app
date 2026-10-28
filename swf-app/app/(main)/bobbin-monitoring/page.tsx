@@ -8,7 +8,6 @@ import { SelectButton } from 'primereact/selectbutton';
 import { InputNumber } from 'primereact/inputnumber';
 import { InputText } from 'primereact/inputtext';
 import { Message } from 'primereact/message';
-import { ProgressBar } from 'primereact/progressbar';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Toast } from 'primereact/toast';
 import { Tooltip } from 'primereact/tooltip';
@@ -577,15 +576,21 @@ type ScrapPendingState =
           phase: 'scraping';
       };
 
-function BobbinScrapPendingPanel({
+function BobbinScrapPendingDialog({
+    visible,
     pending,
     onCancel,
     developerMode
 }: {
-    pending: ScrapPendingState;
+    visible: boolean;
+    pending: ScrapPendingState | null;
     onCancel: () => void;
     developerMode: boolean;
 }) {
+    if (!pending) {
+        return null;
+    }
+
     const isCountdown = pending.phase === 'countdown';
     const secondsLeft = isCountdown ? pending.secondsLeft : 0;
     const ringProgress =
@@ -594,17 +599,36 @@ function BobbinScrapPendingPanel({
             : Math.round(
                   ((SCRAP_COUNTDOWN_SECONDS - secondsLeft) / SCRAP_COUNTDOWN_SECONDS) * 100
               );
+    const canCancel = isCountdown && secondsLeft > 0;
 
     return (
-        <Card className="bobbin-scrap-countdown-card bobbin-hud-card">
+        <Dialog
+            visible={visible}
+            onHide={() => {
+                if (canCancel) onCancel();
+            }}
+            closable={canCancel}
+            dismissableMask={canCancel}
+            closeOnEscape={canCancel}
+            showHeader={false}
+            modal
+            blockScroll
+            className="bobbin-scrap-popup"
+            contentClassName="bobbin-scrap-popup__content p-0"
+            style={{ width: 'min(92vw, 21rem)' }}
+            draggable={false}
+            resizable={false}
+        >
             <div
-                className="bobbin-scrap-countdown-card__inner"
+                className="bobbin-scrap-popup__body"
                 role="status"
                 aria-live="polite"
                 aria-busy={pending.phase === 'scraping'}
             >
                 <div
-                    className="bobbin-scrap-countdown-ring"
+                    className={`bobbin-scrap-countdown-ring bobbin-scrap-countdown-ring--popup${
+                        pending.phase === 'scraping' ? ' bobbin-scrap-countdown-ring--scraping' : ''
+                    }`}
                     style={{ ['--scrap-ring-progress' as string]: String(ringProgress) }}
                     aria-hidden
                 >
@@ -617,37 +641,29 @@ function BobbinScrapPendingPanel({
                             {secondsLeft}
                         </span>
                     ) : (
-                        <ProgressSpinner className="bobbin-scrap-countdown-spinner" />
+                        <ProgressSpinner className="bobbin-scrap-countdown-spinner" strokeWidth="4" />
                     )}
                 </div>
-                <div className="bobbin-scrap-countdown-copy">
-                    <h3 className="bobbin-scrap-countdown-title m-0">
-                        {pending.phase === 'scraping'
-                            ? 'Scrapping…'
-                            : secondsLeft > 0
-                              ? 'Auto scrap starting'
-                              : 'Scrapping…'}
-                    </h3>
-                    <p className="bobbin-scrap-countdown-barcode bobbin-mono-value m-0 mt-2">{pending.barcode}</p>
-                    <p className="text-color-secondary mt-2 mb-0 line-height-3">
-                        {pending.phase === 'scraping' ? 'Scrapping' : 'Will scrap'}{' '}
-                        {pending.plNos.length} lot{pending.plNos.length === 1 ? '' : 's'}
-                        {developerMode ? ` (${pending.plNos.join(', ')})` : ''}
-                        {pending.phase === 'scraping' ? '…' : '.'}
-                    </p>
-                </div>
+                <h3 className="bobbin-scrap-popup__title m-0">Scrap all…</h3>
+                <p className="bobbin-scrap-popup__barcode bobbin-mono-value m-0 mt-2">{pending.barcode}</p>
+                <p className="bobbin-scrap-popup__detail text-color-secondary mt-2 mb-0 line-height-3">
+                    {pending.phase === 'scraping'
+                        ? `Scrapping ${pending.plNos.length} lot${pending.plNos.length === 1 ? '' : 's'}`
+                        : `${pending.plNos.length} lot${pending.plNos.length === 1 ? '' : 's'} in ${secondsLeft}s`}
+                    {developerMode ? ` · ${pending.plNos.join(', ')}` : ''}
+                </p>
+                {canCancel && (
+                    <Button
+                        label="Cancel"
+                        icon="pi pi-times"
+                        severity="danger"
+                        outlined
+                        className="bobbin-scrap-popup__cancel mt-4 w-full"
+                        onClick={onCancel}
+                    />
+                )}
             </div>
-            <ProgressBar
-                value={ringProgress}
-                showValue={false}
-                className="bobbin-scrap-countdown-progress mt-3"
-            />
-            {isCountdown && secondsLeft > 0 && (
-                <div className="flex justify-content-center mt-3">
-                    <Button label="Cancel" icon="pi pi-times" severity="secondary" outlined onClick={onCancel} />
-                </div>
-            )}
-        </Card>
+        </Dialog>
     );
 }
 
@@ -1747,15 +1763,12 @@ export default function BobbinMonitoringPage() {
                 </Card>
             </div>
 
-            {scrapPending && (
-                <div className="col-12">
-                    <BobbinScrapPendingPanel
-                        pending={scrapPending}
-                        onCancel={cancelScrapPending}
-                        developerMode={developerMode}
-                    />
-                </div>
-            )}
+            <BobbinScrapPendingDialog
+                visible={scrapPending !== null}
+                pending={scrapPending}
+                onCancel={cancelScrapPending}
+                developerMode={developerMode}
+            />
 
             <Dialog
                 header="Developer tools"

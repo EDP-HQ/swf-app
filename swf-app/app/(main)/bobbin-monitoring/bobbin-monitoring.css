@@ -1597,35 +1597,70 @@
     white-space: nowrap;
 }
 
-.bobbin-scrap-countdown-card {
-    animation: bobbin-scrap-countdown-enter 0.45s ease-out;
-    border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 12%, transparent),
-        0 12px 40px color-mix(in srgb, var(--primary-color) 18%, transparent);
+.bobbin-scrap-popup.p-dialog {
+    border: none;
+    border-radius: 1rem;
+    overflow: hidden;
+    box-shadow: 0 24px 64px color-mix(in srgb, #000 45%, transparent),
+        0 0 0 1px color-mix(in srgb, var(--red-500, #ef4444) 25%, transparent);
+    animation: bobbin-scrap-popup-in 0.35s cubic-bezier(0.34, 1.2, 0.64, 1);
 }
 
-@keyframes bobbin-scrap-countdown-enter {
+.bobbin-scrap-popup .p-dialog-content {
+    background: var(--surface-overlay, var(--surface-card));
+}
+
+.bobbin-scrap-popup__body {
+    padding: 1.75rem 1.5rem 1.5rem;
+    text-align: center;
+    animation: bobbin-scrap-popup-body-in 0.4s ease-out;
+}
+
+@keyframes bobbin-scrap-popup-in {
     from {
         opacity: 0;
-        transform: translateY(8px) scale(0.98);
+        transform: scale(0.92) translateY(12px);
     }
     to {
         opacity: 1;
-        transform: translateY(0) scale(1);
+        transform: scale(1) translateY(0);
     }
 }
 
-.bobbin-scrap-countdown-card__inner {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 1.25rem 1.75rem;
+@keyframes bobbin-scrap-popup-body-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.bobbin-scrap-popup__title {
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: var(--red-500, #ef4444);
+}
+
+.bobbin-scrap-popup__barcode {
+    font-size: 1.05rem;
+    word-break: break-all;
+}
+
+.bobbin-scrap-popup__detail {
+    font-size: 0.95rem;
+}
+
+.bobbin-scrap-countdown-ring--popup {
+    position: relative;
+    width: 9rem;
+    height: 9rem;
+    margin: 0 auto 1.25rem;
 }
 
 .bobbin-scrap-countdown-ring {
     position: relative;
-    width: 7.5rem;
-    height: 7.5rem;
     flex-shrink: 0;
 }
 
@@ -1637,19 +1672,35 @@
 
 .bobbin-scrap-countdown-ring__track {
     fill: none;
-    stroke: color-mix(in srgb, var(--surface-border) 80%, transparent);
+    stroke: color-mix(in srgb, var(--red-500, #ef4444) 18%, var(--surface-border));
     stroke-width: 8;
 }
 
-.bobbin-scrap-countdown-ring__arc {
+.bobbin-scrap-popup .bobbin-scrap-countdown-ring__arc {
     fill: none;
-    stroke: var(--primary-color);
+    stroke: var(--red-500, #ef4444);
     stroke-width: 8;
     stroke-linecap: round;
     stroke-dasharray: 326.73;
     stroke-dashoffset: calc(326.73 * (1 - (var(--scrap-ring-progress, 0) / 100)));
     transition: stroke-dashoffset 0.85s cubic-bezier(0.4, 0, 0.2, 1);
-    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--primary-color) 45%, transparent));
+    filter: drop-shadow(0 0 8px color-mix(in srgb, var(--red-500, #ef4444) 50%, transparent));
+}
+
+.bobbin-scrap-countdown-ring--scraping .bobbin-scrap-countdown-ring__arc {
+    stroke-dasharray: 72 254.73;
+    stroke-dashoffset: 0;
+    transition: none;
+}
+
+.bobbin-scrap-countdown-ring--scraping .bobbin-scrap-countdown-ring__svg {
+    animation: bobbin-scrap-ring-spin 0.9s linear infinite;
+}
+
+@keyframes bobbin-scrap-ring-spin {
+    to {
+        transform: rotate(270deg);
+    }
 }
 
 .bobbin-scrap-countdown-digit {
@@ -1658,10 +1709,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 2.75rem;
+    font-size: 3rem;
     font-weight: 800;
     line-height: 1;
-    color: var(--primary-color);
+    color: var(--red-500, #ef4444);
     animation: bobbin-scrap-countdown-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -1683,25 +1734,11 @@
     position: absolute;
     inset: 0;
     margin: auto;
-    width: 2.75rem !important;
-    height: 2.75rem !important;
+    width: 3.25rem !important;
+    height: 3.25rem !important;
 }
 
-.bobbin-scrap-countdown-title {
-    font-size: 1.25rem;
-    font-weight: 700;
-}
-
-.bobbin-scrap-countdown-barcode {
-    font-size: 1.05rem;
-}
-
-.bobbin-scrap-countdown-progress {
-    height: 0.35rem;
-    overflow: hidden;
-    border-radius: 999px;
-}
-
-.bobbin-scrap-countdown-progress .p-progressbar-value {
-    transition: width 0.85s ease;
+.bobbin-scrap-popup .bobbin-scrap-countdown-spinner .p-progress-spinner-circle {
+    stroke: var(--red-500, #ef4444) !important;
+    animation: p-progress-spinner-dash 1.5s ease-in-out infinite;
 }
