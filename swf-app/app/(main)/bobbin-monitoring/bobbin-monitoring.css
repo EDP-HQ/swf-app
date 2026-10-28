@@ -1562,3 +1562,37 @@
         flex-direction: column;
     }
 }
+
+.bobbin-scrap-pick-wrap {
+    max-height: min(50vh, 22rem);
+    overflow: auto;
+    border: 1px solid var(--surface-border);
+    border-radius: 8px;
+}
+
+.bobbin-scrap-pick-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.bobbin-scrap-pick-table th,
+.bobbin-scrap-pick-table td {
+    padding: 0.5rem 0.65rem;
+    border-bottom: 1px solid var(--surface-border);
+    text-align: left;
+    vertical-align: middle;
+}
+
+.bobbin-scrap-pick-table th {
+    position: sticky;
+    top: 0;
+    background: var(--surface-card);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.bobbin-scrap-pick-table__action {
+    text-align: right;
+    white-space: nowrap;
+}

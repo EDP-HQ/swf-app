@@ -13,7 +13,7 @@ export type PdaScrapRequestMeta = {
 
 /**
  * POST USP_SFC_PDA_SCRAP_I10 via Next proxy (local or sfcwr per active DB target).
- * @param fullBobbinCode Entire scanned/typed bobbin code (sent as `lc_cd` / SQL @LC_CD). Unlike bobbincycle, this is not reduced to last 4 digits.
+ * @param fullBobbinCode Entire scanned barcode, or a specific PL_NO to scrap one lot (prod SP matches PL_NO = @LC_CD).
  */
 export async function postBobbinPdaScrap(
     fullBobbinCode: string,

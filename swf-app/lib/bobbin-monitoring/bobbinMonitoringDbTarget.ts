@@ -40,7 +40,8 @@ export type BobbinApiEndpoint =
     | 'bobbincycle'
     | 'bobbinlifespan'
     | 'pdalogin'
-    | 'pdascrap';
+    | 'pdascrap'
+    | 'scrapinventory';
 
 /** Path on swf-api, e.g. `/bobbin/limitwarning` or `/bobbin/sfcwr/limitwarning`. */
 export function bobbinSwfApiPath(endpoint: BobbinApiEndpoint, target: BobbinDbTarget = getBobbinDbTarget()): string {
