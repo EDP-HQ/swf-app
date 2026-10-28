@@ -8,6 +8,8 @@ import { SelectButton } from 'primereact/selectbutton';
 import { InputNumber } from 'primereact/inputnumber';
 import { InputText } from 'primereact/inputtext';
 import { Message } from 'primereact/message';
+import { ProgressBar } from 'primereact/progressbar';
+import { ProgressSpinner } from 'primereact/progressspinner';
 import { Toast } from 'primereact/toast';
 import { Tooltip } from 'primereact/tooltip';
 import type { BobbinCheckState, BobbinLifespanInfo, BobbinSummary } from '@/lib/bobbin-monitoring/types';
@@ -42,8 +44,7 @@ import {
 } from '@/lib/bobbin-monitoring/bobbinMonitoringDbTarget';
 import { postBobbinPdaScrap, type PdaScrapRequestMeta } from '@/lib/bobbin-monitoring/bobbinPdaScrapClient';
 import {
-    fetchBobbinInventoryForScrap,
-    type BobbinInventoryForScrapRow
+    fetchBobbinInventoryForScrap
 } from '@/lib/bobbin-monitoring/bobbinScrapInventoryClient';
 import { pdaLogin } from '@/lib/bobbin-monitoring/bobbinPdaLoginClient';
 import {
@@ -103,7 +104,7 @@ const BOBBIN_DEV_REFERENCE = `Client → API → database
 
 4) Check bobbin (scan routing — extractLcCd.ts isPb18LifespanBobbinCode)
    • PB18* → lifespan/cycle only: last-4 LC_CD → GET …/bobbincycle, …/bobbinlifespan (no scrap)
-   • Other codes → scrap only when signed in: GET …/scrapinventory → sp_Bobbin_Inventory_ForScrap_Select; POST …/pdascrap per PL_NO → USP_SFC_PDA_SCRAP_I10 (unchanged)
+   • Other codes → scrap only: GET …/scrapinventory; then POST …/pdascrap once per PL_NO (auto when multiple rows)
    • PB18 path: fetchBobbinCycle, mapBobbincycleRows, fetchBobbinLifespanStartDate, buildLifespanInfo, mergeSummaryWithCycleLimit, mergeLifespanIntoStatus`;
 
 function statusSeverity(status: BobbinSummary['status']): 'success' | 'warning' | 'danger' | 'info' {
@@ -561,6 +562,95 @@ function CycleHeroWallPanel({
     );
 }
 
+const SCRAP_COUNTDOWN_SECONDS = 3;
+
+type ScrapPendingState =
+    | {
+          barcode: string;
+          plNos: string[];
+          phase: 'countdown';
+          secondsLeft: number;
+      }
+    | {
+          barcode: string;
+          plNos: string[];
+          phase: 'scraping';
+      };
+
+function BobbinScrapPendingPanel({
+    pending,
+    onCancel,
+    developerMode
+}: {
+    pending: ScrapPendingState;
+    onCancel: () => void;
+    developerMode: boolean;
+}) {
+    const isCountdown = pending.phase === 'countdown';
+    const secondsLeft = isCountdown ? pending.secondsLeft : 0;
+    const ringProgress =
+        pending.phase === 'scraping'
+            ? 100
+            : Math.round(
+                  ((SCRAP_COUNTDOWN_SECONDS - secondsLeft) / SCRAP_COUNTDOWN_SECONDS) * 100
+              );
+
+    return (
+        <Card className="bobbin-scrap-countdown-card bobbin-hud-card">
+            <div
+                className="bobbin-scrap-countdown-card__inner"
+                role="status"
+                aria-live="polite"
+                aria-busy={pending.phase === 'scraping'}
+            >
+                <div
+                    className="bobbin-scrap-countdown-ring"
+                    style={{ ['--scrap-ring-progress' as string]: String(ringProgress) }}
+                    aria-hidden
+                >
+                    <svg viewBox="0 0 120 120" className="bobbin-scrap-countdown-ring__svg">
+                        <circle className="bobbin-scrap-countdown-ring__track" cx="60" cy="60" r="52" />
+                        <circle className="bobbin-scrap-countdown-ring__arc" cx="60" cy="60" r="52" />
+                    </svg>
+                    {isCountdown && secondsLeft > 0 ? (
+                        <span key={secondsLeft} className="bobbin-scrap-countdown-digit">
+                            {secondsLeft}
+                        </span>
+                    ) : (
+                        <ProgressSpinner className="bobbin-scrap-countdown-spinner" />
+                    )}
+                </div>
+                <div className="bobbin-scrap-countdown-copy">
+                    <h3 className="bobbin-scrap-countdown-title m-0">
+                        {pending.phase === 'scraping'
+                            ? 'Scrapping…'
+                            : secondsLeft > 0
+                              ? 'Auto scrap starting'
+                              : 'Scrapping…'}
+                    </h3>
+                    <p className="bobbin-scrap-countdown-barcode bobbin-mono-value m-0 mt-2">{pending.barcode}</p>
+                    <p className="text-color-secondary mt-2 mb-0 line-height-3">
+                        {pending.phase === 'scraping' ? 'Scrapping' : 'Will scrap'}{' '}
+                        {pending.plNos.length} lot{pending.plNos.length === 1 ? '' : 's'}
+                        {developerMode ? ` (${pending.plNos.join(', ')})` : ''}
+                        {pending.phase === 'scraping' ? '…' : '.'}
+                    </p>
+                </div>
+            </div>
+            <ProgressBar
+                value={ringProgress}
+                showValue={false}
+                className="bobbin-scrap-countdown-progress mt-3"
+            />
+            {isCountdown && secondsLeft > 0 && (
+                <div className="flex justify-content-center mt-3">
+                    <Button label="Cancel" icon="pi pi-times" severity="secondary" outlined onClick={onCancel} />
+                </div>
+            )}
+        </Card>
+    );
+}
+
 export default function BobbinMonitoringPage() {
     const inputRef = useRef<HTMLInputElement>(null);
     const toastRef = useRef<Toast>(null);
@@ -593,11 +683,9 @@ export default function BobbinMonitoringPage() {
     const [loginError, setLoginError] = useState<string | null>(null);
     const [lastLogoutLabel, setLastLogoutLabel] = useState<string | null>(null);
     const [pdaScrapLastRequest, setPdaScrapLastRequest] = useState<PdaScrapRequestMeta | null>(null);
-    const [scrapPickOpen, setScrapPickOpen] = useState(false);
-    const [scrapPickBarcode, setScrapPickBarcode] = useState('');
-    const [scrapPickRows, setScrapPickRows] = useState<BobbinInventoryForScrapRow[]>([]);
-    const [scrapPickBusy, setScrapPickBusy] = useState(false);
-    const [scrapRowPlNoBusy, setScrapRowPlNoBusy] = useState<string | null>(null);
+    const [scrapPending, setScrapPending] = useState<ScrapPendingState | null>(null);
+    const scrapSessionRef = useRef(0);
+    const activeScrapRunKeyRef = useRef<string | null>(null);
 
     useEffect(() => {
         try {
@@ -695,7 +783,16 @@ export default function BobbinMonitoringPage() {
         [applyLimitWarningResult]
     );
 
+    const cancelScrapPending = useCallback(() => {
+        scrapSessionRef.current += 1;
+        setScrapPending(null);
+        setState({ kind: 'idle' });
+        focusInput();
+    }, [focusInput]);
+
     const signOutPda = useCallback(() => {
+        scrapSessionRef.current += 1;
+        setScrapPending(null);
         recordBobbinPdaLogout();
         clearBobbinPdaSession();
         setPdaSession(null);
@@ -709,11 +806,6 @@ export default function BobbinMonitoringPage() {
         setLifespanLimitDays(BOBBIN_DEFAULT_LIFESPAN_LIMIT_DAYS);
         setLifespanWarningPct(BOBBIN_DEFAULT_LIFESPAN_WARNING_PCT);
         setPdaScrapLastRequest(null);
-        setScrapPickOpen(false);
-        setScrapPickBarcode('');
-        setScrapPickRows([]);
-        setScrapPickBusy(false);
-        setScrapRowPlNoBusy(null);
     }, []);
 
     /** 08:00 / 20:00 local shift handover — auto sign-out (poll + catch sleep-through). */
@@ -884,7 +976,7 @@ export default function BobbinMonitoringPage() {
     }, [applyLimitWarningResult, draftCycleLimit, draftCycleWarn, draftLifeWarn, draftLifeYears]);
 
     const runScrapForPlNo = useCallback(
-        async (plNo: string, labelForToast: string) => {
+        async (plNo: string, labelForToast: string, options?: { silentToast?: boolean }) => {
             if (!pdaSession) {
                 return { ok: false as const, message: 'Sign in to scrap.' };
             }
@@ -892,95 +984,128 @@ export default function BobbinMonitoringPage() {
                 onRequestMeta: developerMode ? setPdaScrapLastRequest : undefined
             });
             if (scrapResult.ok) {
-                toastRef.current?.show({
-                    severity: 'success',
-                    summary: 'PDA scrap',
-                    detail: developerMode
-                        ? `${labelForToast} (${plNo}): USP_SFC_PDA_SCRAP_I10.`
-                        : `${labelForToast}: inventory scrap logged.`,
-                    life: 6000
-                });
+                if (!options?.silentToast) {
+                    toastRef.current?.show({
+                        severity: 'success',
+                        summary: 'PDA scrap',
+                        detail: developerMode
+                            ? `${labelForToast} (${plNo}): USP_SFC_PDA_SCRAP_I10.`
+                            : `${labelForToast}: inventory scrap logged.`,
+                        life: 6000
+                    });
+                }
                 return { ok: true as const };
             }
-            toastRef.current?.show({
-                severity: 'error',
-                summary: 'PDA scrap failed',
-                detail: scrapResult.message,
-                life: 15000
-            });
+            if (!options?.silentToast) {
+                toastRef.current?.show({
+                    severity: 'error',
+                    summary: 'PDA scrap failed',
+                    detail: scrapResult.message,
+                    life: 15000
+                });
+            }
             return { ok: false as const, message: scrapResult.message };
         },
         [developerMode, pdaSession]
     );
 
-    const closeScrapPickDialog = useCallback(() => {
-        if (scrapPickBusy || scrapRowPlNoBusy) return;
-        setScrapPickOpen(false);
-        setScrapPickBarcode('');
-        setScrapPickRows([]);
-    }, [scrapPickBusy, scrapRowPlNoBusy]);
-
-    const scrapOneInventoryRow = useCallback(
-        async (row: BobbinInventoryForScrapRow) => {
-            setScrapRowPlNoBusy(row.plNo);
-            try {
-                const result = await runScrapForPlNo(row.plNo, scrapPickBarcode || row.lcCd);
+    const scrapInventoryPlNos = useCallback(
+        async (barcode: string, plNos: string[]) => {
+            let failedMessage: string | null = null;
+            let successCount = 0;
+            for (const plNo of plNos) {
+                const result = await runScrapForPlNo(plNo, barcode, { silentToast: plNos.length > 1 });
                 if (!result.ok) {
-                    setState({ kind: 'error', message: result.message ?? 'Scrap failed.' });
-                    return;
+                    failedMessage = result.message ?? 'Scrap failed.';
+                    break;
                 }
-                setScrapPickRows((prev) => {
-                    const next = prev.filter((r) => r.plNo !== row.plNo);
-                    if (next.length === 0) {
-                        setScrapPickOpen(false);
-                        setScrapPickBarcode('');
-                    }
-                    return next;
-                });
-                setState({ kind: 'idle' });
-            } finally {
-                setScrapRowPlNoBusy(null);
-                focusInput();
+                successCount += 1;
             }
+            if (failedMessage) {
+                const partial =
+                    successCount > 0
+                        ? ` ${successCount} of ${plNos.length} lot(s) scrapped before the error.`
+                        : '';
+                toastRef.current?.show({
+                    severity: 'error',
+                    summary: 'PDA scrap failed',
+                    detail: `${failedMessage}${partial}`,
+                    life: 15000
+                });
+                return {
+                    ok: false as const,
+                    message: `${failedMessage}${partial}`,
+                    successCount
+                };
+            }
+            if (plNos.length > 1) {
+                toastRef.current?.show({
+                    severity: 'success',
+                    summary: 'PDA scrap',
+                    detail: developerMode
+                        ? `${barcode}: scrapped ${plNos.length} lots (${plNos.join(', ')}).`
+                        : `${barcode}: scrapped ${plNos.length} redundant lot(s).`,
+                    life: 8000
+                });
+            }
+            return { ok: true as const, successCount };
         },
-        [focusInput, runScrapForPlNo, scrapPickBarcode]
+        [developerMode, runScrapForPlNo]
     );
 
-    const scrapAllInventoryRows = useCallback(async () => {
-        if (scrapPickRows.length === 0) return;
-        setScrapPickBusy(true);
-        const label = scrapPickBarcode;
-        let failedMessage: string | null = null;
-        let remaining = [...scrapPickRows];
-        for (const row of scrapPickRows) {
-            const result = await runScrapForPlNo(row.plNo, label || row.lcCd);
-            if (!result.ok) {
-                failedMessage = result.message ?? 'Scrap failed.';
-                break;
-            }
-            remaining = remaining.filter((r) => r.plNo !== row.plNo);
+    useEffect(() => {
+        if (!scrapPending || scrapPending.phase !== 'countdown' || scrapPending.secondsLeft <= 0) {
+            return;
         }
-        if (failedMessage) {
-            setState({ kind: 'error', message: failedMessage });
-            setScrapPickRows(remaining);
-            if (remaining.length === 0) {
-                setScrapPickOpen(false);
-                setScrapPickBarcode('');
+        const session = scrapSessionRef.current;
+        const t = window.setTimeout(() => {
+            if (session !== scrapSessionRef.current) return;
+            setScrapPending((prev) => {
+                if (!prev || prev.phase !== 'countdown') return prev;
+                if (prev.secondsLeft <= 1) {
+                    return { barcode: prev.barcode, plNos: prev.plNos, phase: 'scraping' };
+                }
+                return { ...prev, secondsLeft: prev.secondsLeft - 1 };
+            });
+        }, 1000);
+        return () => window.clearTimeout(t);
+    }, [scrapPending]);
+
+    useEffect(() => {
+        if (!scrapPending || scrapPending.phase !== 'scraping') return;
+        const session = scrapSessionRef.current;
+        const runKey = `${session}:${scrapPending.barcode}:${scrapPending.plNos.join('|')}`;
+        if (activeScrapRunKeyRef.current === runKey) return;
+        activeScrapRunKeyRef.current = runKey;
+        const { barcode, plNos } = scrapPending;
+        void (async () => {
+            try {
+                const result = await scrapInventoryPlNos(barcode, plNos);
+                if (session !== scrapSessionRef.current) return;
+                setScrapPending(null);
+                setState(
+                    result.ok
+                        ? { kind: 'idle' }
+                        : { kind: 'error', message: result.message ?? 'Scrap failed.' }
+                );
+                focusInput();
+            } finally {
+                if (activeScrapRunKeyRef.current === runKey) {
+                    activeScrapRunKeyRef.current = null;
+                }
             }
-        } else {
-            setScrapPickOpen(false);
-            setScrapPickBarcode('');
-            setScrapPickRows([]);
-            setState({ kind: 'idle' });
-        }
-        setScrapPickBusy(false);
-        focusInput();
-    }, [focusInput, runScrapForPlNo, scrapPickBarcode, scrapPickRows]);
+        })();
+    }, [scrapPending, scrapInventoryPlNos, focusInput]);
+
+    const scrapFlowActive = scrapPending !== null;
 
     const runCheck = useCallback(async () => {
         const trimmed = code.trim();
         if (!trimmed) {
             setState({ kind: 'idle' });
+            return;
+        }
+        if (scrapFlowActive) {
             return;
         }
 
@@ -1005,19 +1130,14 @@ export default function BobbinMonitoringPage() {
                     });
                     return;
                 }
-                if (inventory.rows.length === 1) {
-                    const row = inventory.rows[0];
-                    const result = await runScrapForPlNo(row.plNo, trimmed);
-                    setState(
-                        result.ok
-                            ? { kind: 'idle' }
-                            : { kind: 'error', message: result.message ?? 'Scrap failed.' }
-                    );
-                    return;
-                }
-                setScrapPickBarcode(trimmed);
-                setScrapPickRows(inventory.rows);
-                setScrapPickOpen(true);
+                const plNos = inventory.rows.map((r) => r.plNo);
+                scrapSessionRef.current += 1;
+                setScrapPending({
+                    barcode: trimmed,
+                    plNos,
+                    phase: 'countdown',
+                    secondsLeft: SCRAP_COUNTDOWN_SECONDS
+                });
                 setState({ kind: 'idle' });
             } catch {
                 setState({
@@ -1079,13 +1199,17 @@ export default function BobbinMonitoringPage() {
             setCode('');
             focusInput();
         }
-    }, [code, cycleLimit, developerMode, focusInput, pdaSession, runScrapForPlNo]);
+    }, [code, cycleLimit, developerMode, focusInput, pdaSession, scrapFlowActive]);
 
     const onClear = useCallback(() => {
+        if (scrapPending?.phase === 'countdown') {
+            cancelScrapPending();
+            return;
+        }
         setCode('');
         setState({ kind: 'idle' });
         focusInput();
-    }, [focusInput]);
+    }, [cancelScrapPending, focusInput, scrapPending]);
 
     const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
@@ -1367,7 +1491,7 @@ export default function BobbinMonitoringPage() {
                         <p className="bobbin-page-subtitle bobbin-page-subtitle--wall m-0">
                             {developerMode ? (
                                 <>
-                                    PB18 codes: check cycle and lifespan. Other codes (e.g. PB40): scrap only.
+                                    PB18 codes: check cycle and lifespan. Other codes: scrap all lots automatically when redundant.
                                 </>
                             ) : (
                                 <>Scan or type a bobbin code, then check.</>
@@ -1536,7 +1660,7 @@ export default function BobbinMonitoringPage() {
                                     developerMode ? 'PB18… check · other scrap' : 'Scan or enter code'
                                 }
                                 className="w-full bobbin-scan-input"
-                                disabled={state.kind === 'loading'}
+                                disabled={state.kind === 'loading' || scrapFlowActive}
                                 autoComplete="off"
                                 autoFocus
                             />
@@ -1558,6 +1682,7 @@ export default function BobbinMonitoringPage() {
                                     void runCheck();
                                 }}
                                 loading={state.kind === 'loading'}
+                                disabled={scrapFlowActive}
                             />
                             <Button
                                 type="button"
@@ -1566,6 +1691,7 @@ export default function BobbinMonitoringPage() {
                                 size="small"
                                 className="p-button-outlined"
                                 onClick={onClear}
+                                disabled={scrapFlowActive && scrapPending?.phase === 'scraping'}
                             />
                             <Button
                                 type="button"
@@ -1574,7 +1700,7 @@ export default function BobbinMonitoringPage() {
                                 size="small"
                                 className="p-button-outlined"
                                 onClick={signOutPda}
-                                disabled={state.kind === 'loading'}
+                                disabled={state.kind === 'loading' || scrapFlowActive}
                                 aria-label="Sign out and return to login"
                             />
                             <Button
@@ -1585,7 +1711,7 @@ export default function BobbinMonitoringPage() {
                                 className="p-button-outlined"
                                 onClick={openLimitDialog}
                                 loading={limitSettingsOpenPending}
-                                disabled={state.kind === 'loading' || limitSettingsOpenPending}
+                                disabled={state.kind === 'loading' || limitSettingsOpenPending || scrapFlowActive}
                                 aria-label="Bobbin limit and warning settings"
                             />
                             <Tooltip
@@ -1604,7 +1730,7 @@ export default function BobbinMonitoringPage() {
                                 size="small"
                                 className={developerMode ? 'p-button-secondary' : 'p-button-outlined'}
                                 onClick={onDevModeButtonClick}
-                                disabled={state.kind === 'loading'}
+                                disabled={state.kind === 'loading' || scrapFlowActive}
                                 aria-label={developerMode ? 'Exit developer mode' : 'Developer mode'}
                             />
                             <Tooltip
@@ -1620,6 +1746,16 @@ export default function BobbinMonitoringPage() {
                     </div>
                 </Card>
             </div>
+
+            {scrapPending && (
+                <div className="col-12">
+                    <BobbinScrapPendingPanel
+                        pending={scrapPending}
+                        onCancel={cancelScrapPending}
+                        developerMode={developerMode}
+                    />
+                </div>
+            )}
 
             <Dialog
                 header="Developer tools"
@@ -1669,90 +1805,6 @@ export default function BobbinMonitoringPage() {
                 {devPasswordError && (
                     <Message severity="error" text={devPasswordError} className="w-full mt-3" />
                 )}
-            </Dialog>
-
-            <Dialog
-                header="Multiple materials on bobbin"
-                visible={scrapPickOpen}
-                style={{ width: 'min(96vw, 52rem)' }}
-                onHide={closeScrapPickDialog}
-                draggable={false}
-                resizable={false}
-                footer={
-                    <div className="flex flex-wrap justify-content-between align-items-center gap-2 w-full">
-                        <span className="text-sm text-color-secondary">
-                            <strong className="bobbin-mono-value">{scrapPickBarcode}</strong>
-                            {' · '}
-                            {scrapPickRows.length} item{scrapPickRows.length === 1 ? '' : 's'}
-                            {developerMode ? ' in TB_INVENTORY' : ''}
-                        </span>
-                        <div className="flex flex-wrap gap-2">
-                            <Button
-                                type="button"
-                                label="Cancel"
-                                className="p-button-text"
-                                onClick={closeScrapPickDialog}
-                                disabled={scrapPickBusy || scrapRowPlNoBusy !== null}
-                            />
-                            <Button
-                                type="button"
-                                label={`Scrap all (${scrapPickRows.length})`}
-                                icon="pi pi-trash"
-                                severity="danger"
-                                loading={scrapPickBusy}
-                                disabled={scrapPickRows.length === 0 || scrapRowPlNoBusy !== null}
-                                onClick={() => void scrapAllInventoryRows()}
-                            />
-                        </div>
-                    </div>
-                }
-            >
-                {developerMode && (
-                    <p className="mt-0 text-color-secondary line-height-3 mb-3">
-                        Scrap one lot at a time, or scrap all. Each action calls{' '}
-                        <code className="text-sm">USP_SFC_PDA_SCRAP_I10</code> once per <strong>PL_NO</strong>.
-                    </p>
-                )}
-                <div className="bobbin-scrap-pick-wrap">
-                    <table className="bobbin-scrap-pick-table">
-                        <thead>
-                            <tr>
-                                <th>PL_NO</th>
-                                <th>Material</th>
-                                <th>Description</th>
-                                <th>Bin</th>
-                                <th>Balance (kg)</th>
-                                <th>Prod date</th>
-                                <th />
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {scrapPickRows.map((row) => (
-                                <tr key={row.plNo}>
-                                    <td className="bobbin-mono-value">{row.plNo}</td>
-                                    <td>{row.materialCd || '—'}</td>
-                                    <td>{row.materialDesc || '—'}</td>
-                                    <td className="bobbin-mono-value">{row.binLocationCd || '—'}</td>
-                                    <td>{row.balanceWt > 0 ? row.balanceWt.toLocaleString() : '—'}</td>
-                                    <td>{row.prodDt ? row.prodDt.replace('T', ' ').slice(0, 16) : '—'}</td>
-                                    <td className="bobbin-scrap-pick-table__action">
-                                        <Button
-                                            type="button"
-                                            label="Scrap"
-                                            icon="pi pi-trash"
-                                            size="small"
-                                            severity="danger"
-                                            outlined
-                                            loading={scrapRowPlNoBusy === row.plNo}
-                                            disabled={scrapPickBusy || (scrapRowPlNoBusy !== null && scrapRowPlNoBusy !== row.plNo)}
-                                            onClick={() => void scrapOneInventoryRow(row)}
-                                        />
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
             </Dialog>
 
             <Dialog
