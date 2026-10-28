@@ -1365,7 +1365,13 @@ export default function BobbinMonitoringPage() {
                     <div className="flex flex-column gap-1 min-w-0 flex-1">
                         <h2 className="bobbin-page-title bobbin-page-title--wall m-0">{BOBBIN_PAGE_TITLE}</h2>
                         <p className="bobbin-page-subtitle bobbin-page-subtitle--wall m-0">
-                            PB18 codes: check cycle and lifespan. Other codes (e.g. PB40): scrap only.
+                            {developerMode ? (
+                                <>
+                                    PB18 codes: check cycle and lifespan. Other codes (e.g. PB40): scrap only.
+                                </>
+                            ) : (
+                                <>Scan or type a bobbin code, then check.</>
+                            )}
                             {pdaSession && (
                                 <>
                                     {' '}
@@ -1526,15 +1532,20 @@ export default function BobbinMonitoringPage() {
                                 onChange={(e) => setCode(e.target.value)}
                                 onKeyDown={onKeyDown}
                                 onFocus={onScanInputFocus}
-                                placeholder="PB18… check · other scrap"
+                                placeholder={
+                                    developerMode ? 'PB18… check · other scrap' : 'Scan or enter code'
+                                }
                                 className="w-full bobbin-scan-input"
                                 disabled={state.kind === 'loading'}
                                 autoComplete="off"
                                 autoFocus
                             />
-                            <small className="text-color-secondary line-height-3">
-                                <strong>PB18</strong> prefix: cycle and lifespan. Other prefixes: scrap only (full barcode).
-                            </small>
+                            {developerMode && (
+                                <small className="text-color-secondary line-height-3">
+                                    <strong>PB18</strong> prefix: cycle and lifespan. Other prefixes: scrap only (full
+                                    barcode).
+                                </small>
+                            )}
                         </div>
                         <div className="flex flex-wrap gap-2 align-items-center bobbin-scan-actions">
                             <Button
@@ -1670,8 +1681,10 @@ export default function BobbinMonitoringPage() {
                 footer={
                     <div className="flex flex-wrap justify-content-between align-items-center gap-2 w-full">
                         <span className="text-sm text-color-secondary">
-                            Bobbin <strong className="bobbin-mono-value">{scrapPickBarcode}</strong> —{' '}
-                            {scrapPickRows.length} lot{scrapPickRows.length === 1 ? '' : 's'} in TB_INVENTORY
+                            <strong className="bobbin-mono-value">{scrapPickBarcode}</strong>
+                            {' · '}
+                            {scrapPickRows.length} item{scrapPickRows.length === 1 ? '' : 's'}
+                            {developerMode ? ' in TB_INVENTORY' : ''}
                         </span>
                         <div className="flex flex-wrap gap-2">
                             <Button
@@ -1694,11 +1707,12 @@ export default function BobbinMonitoringPage() {
                     </div>
                 }
             >
-                <p className="mt-0 text-color-secondary line-height-3 mb-3">
-                    Scrap one lot at a time, or scrap all. Each action calls{' '}
-                    <code className="text-sm">USP_SFC_PDA_SCRAP_I10</code> once per <strong>PL_NO</strong> (existing
-                    procedure, unchanged).
-                </p>
+                {developerMode && (
+                    <p className="mt-0 text-color-secondary line-height-3 mb-3">
+                        Scrap one lot at a time, or scrap all. Each action calls{' '}
+                        <code className="text-sm">USP_SFC_PDA_SCRAP_I10</code> once per <strong>PL_NO</strong>.
+                    </p>
+                )}
                 <div className="bobbin-scrap-pick-wrap">
                     <table className="bobbin-scrap-pick-table">
                         <thead>

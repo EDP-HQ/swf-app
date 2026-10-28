@@ -57,7 +57,7 @@ export const APP_NAV_SECTIONS: AppNavSection[] = [
                 label: 'Bobbin Lifespan Control Program',
                 to: '/bobbin-monitoring',
                 icon: 'pi pi-fw pi-hourglass',
-                description: 'PDA login, PB18 lifespan checks, other-code scrap, and limits.'
+                description: 'PDA login, bobbin cycle and lifespan checks, and limits.'
             }
         ]
     },
