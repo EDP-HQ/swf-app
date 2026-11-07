@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import Link from "next/link";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { DataTable } from "primereact/datatable";
 import { Column } from "primereact/column";
@@ -168,18 +167,8 @@ export default function MaterialVerificationM2bPage() {
 
     return (
         <div className="material-verification-dashboard">
-            <div className="m2b-banner">
-                <strong>Material → Bin verification (new)</strong>
-                <span className="m2b-subtitle">
-                    Suggestion Bin.lo = <code>BIN_LOCATION_DESC</code> (not bin master grade TARGET) — legacy screen unchanged.
-                </span>
-                <span className="m2b-link">
-                    <Link href="/WareHouse/material-verification">Open classic (bin master) verification</Link>
-                </span>
-            </div>
-
             <div className="compact-header">
-                <h1>SWR RACK Verification — Material List Rules</h1>
+                <h1>SWR RACK Verification — Material → Bin</h1>
                 <div className="header-controls">
                     <Button
                         icon="pi pi-refresh"
