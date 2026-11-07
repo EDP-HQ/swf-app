@@ -2,12 +2,18 @@
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { DataTable } from "primereact/datatable";
 import { Column } from "primereact/column";
 import { Button } from "primereact/button";
+import { RackVerificationCharts } from "@/lib/material-verification-m2b/RackVerificationCharts";
+
+ChartJS.register(ArcElement, Tooltip, Legend);
 import {
     fetchM2bVerificationData,
-    formatTargetDisplay
+    formatSuggestionBinDisplay,
+    isM2bEmptyRackSlot,
+    rackSlotHoverTitle
 } from "@/lib/material-verification-m2b/fetchM2bVerification";
 import "../material-verification/material-verification.css";
 import "./material-verification-m2b.css";
@@ -27,12 +33,13 @@ function buildRackColumns(rackData, gridCount) {
                 if (dataIndex >= rackData.length) return <div className="empty-cell" />;
                 const item = rackData[dataIndex];
                 const isFlagged1 = item.FLAG1 === "N";
-                const isEmpty = !item.TOTAL_CNT;
+                const isEmpty = isM2bEmptyRackSlot(item);
+                const hoverTitle = rackSlotHoverTitle(item) ?? item.BIN_LOC;
                 const displayValue = item.BIN_LOC ? item.BIN_LOC.replace(/^DS000[12]_/, "") : "";
                 return (
                     <div
                         className={`bin-loc-cell ${isFlagged1 ? "flagged" : ""} ${isEmpty ? "empty-rack" : ""}`}
-                        title={item.BIN_LOC}
+                        title={hoverTitle}
                     >
                         {displayValue}
                     </div>
@@ -43,30 +50,27 @@ function buildRackColumns(rackData, gridCount) {
                 if (dataIndex >= rackData.length) return "";
                 const item = rackData[dataIndex];
                 if (item.FLAG2 === "N") return "flagged2";
-                if (!item.TOTAL_CNT) return "empty-rack-cell";
+                if (isM2bEmptyRackSlot(item)) return "empty-rack-cell";
                 return "";
             }
         });
 
         columns.push({
             field: `TARGET_${gridIndex}`,
-            header: "TARGET (material list)",
+            header: "SUGGESTION BIN",
             body: (rowData) => {
                 const dataIndex = startIndex + rowData.rowIndex;
                 if (dataIndex >= rackData.length) return <div className="empty-cell" />;
                 const item = rackData[dataIndex];
                 const isFlagged1 = item.FLAG1 === "N";
-                const isEmpty = !item.TOTAL_CNT;
-                const hint =
-                    item.SUGGESTION_MATERIAL_CNT === 0 && item.TOTAL_CNT > 0
-                        ? "No grade assigned to this bin on material list"
-                        : undefined;
+                const isEmpty = isM2bEmptyRackSlot(item);
+                const hoverTitle = rackSlotHoverTitle(item);
                 return (
                     <div
                         className={`bin-location-target-cell ${isFlagged1 ? "flagged" : ""} ${isEmpty ? "empty-rack" : ""}`}
-                        title={hint}
+                        title={hoverTitle}
                     >
-                        {formatTargetDisplay(item.BIN_LOCATION_TARGET) || (hint ? "— (no assignment)" : "")}
+                        {formatSuggestionBinDisplay(item.SUGGESTION_BIN_DESC)}
                     </div>
                 );
             },
@@ -76,7 +80,7 @@ function buildRackColumns(rackData, gridCount) {
                 if (dataIndex >= rackData.length) return "";
                 const item = rackData[dataIndex];
                 if (item.FLAG2 === "N") return "flagged2";
-                if (!item.TOTAL_CNT) return "empty-rack-cell";
+                if (isM2bEmptyRackSlot(item)) return "empty-rack-cell";
                 return "";
             }
         });
@@ -89,9 +93,13 @@ function buildRackColumns(rackData, gridCount) {
                 if (dataIndex >= rackData.length) return <div className="empty-cell" />;
                 const item = rackData[dataIndex];
                 const isFlagged1 = item.FLAG1 === "N";
-                const isEmpty = !item.TOTAL_CNT;
+                const isEmpty = isM2bEmptyRackSlot(item);
+                const hoverTitle = rackSlotHoverTitle(item);
                 return (
-                    <div className={`total-cnt-cell ${isFlagged1 ? "flagged" : ""} ${isEmpty ? "empty-rack" : ""}`}>
+                    <div
+                        className={`total-cnt-cell ${isFlagged1 ? "flagged" : ""} ${isEmpty ? "empty-rack" : ""}`}
+                        title={hoverTitle}
+                    >
                         {item.TOTAL_CNT || 0}
                     </div>
                 );
@@ -102,7 +110,7 @@ function buildRackColumns(rackData, gridCount) {
                 if (dataIndex >= rackData.length) return "";
                 const item = rackData[dataIndex];
                 if (item.FLAG2 === "N") return "flagged2";
-                if (!item.TOTAL_CNT) return "empty-rack-cell";
+                if (isM2bEmptyRackSlot(item)) return "empty-rack-cell";
                 return "";
             }
         });
@@ -149,17 +157,8 @@ export default function MaterialVerificationM2bPage() {
 
     const sevenRackData = grouped["7 Rack"] || [];
     const fiveRackData = grouped["5 Rack"] || [];
-    const activeRack = activeTab === 0 ? sevenRackData : fiveRackData;
-
-    const stats = useMemo(() => {
-        const wrong = activeRack.filter((r) => r.FLAG2 === "N").length;
-        const withAssignment = activeRack.filter((r) => (r.SUGGESTION_MATERIAL_CNT || 0) > 0).length;
-        return { wrong, total: activeRack.length, withAssignment };
-    }, [activeRack]);
-
     const sevenGrid = buildRackColumns(sevenRackData, Math.ceil(sevenRackData.length / 25) || 1);
     const fiveGrid = buildRackColumns(fiveRackData, Math.ceil(fiveRackData.length / 25) || 1);
-    const grid = activeTab === 0 ? sevenGrid : fiveGrid;
 
     const formatRefreshTime = (date) => {
         if (!date) return "";
@@ -172,7 +171,7 @@ export default function MaterialVerificationM2bPage() {
             <div className="m2b-banner">
                 <strong>Material → Bin verification (new)</strong>
                 <span className="m2b-subtitle">
-                    TARGET &amp; red/green from KBAS010 <code>TB_CD_MATERIAL.BIN_LOCATION_CD</code> — legacy screen unchanged.
+                    Suggestion Bin.lo = <code>BIN_LOCATION_DESC</code> (not bin master grade TARGET) — legacy screen unchanged.
                 </span>
                 <span className="m2b-link">
                     <Link href="/WareHouse/material-verification">Open classic (bin master) verification</Link>
@@ -214,53 +213,107 @@ export default function MaterialVerificationM2bPage() {
                 </div>
 
                 <div className="main-content">
-                    <div className="grid-container">
-                        <div className="grid-header">
-                            <div className="header-left">
-                                <h3>{activeTab === 0 ? "7 Rack" : "5 Rack"} — M2B</h3>
-                                {lastRefreshTime ? (
-                                    <div className="refresh-time">
-                                        <i className="pi pi-clock" />
-                                        <span>Last updated: {formatRefreshTime(lastRefreshTime)}</span>
+                    {activeTab === 0 && (
+                        <div className="grid-container">
+                            <div className="grid-header">
+                                <div className="header-left">
+                                    <h3>7 Rack — M2B</h3>
+                                    {lastRefreshTime ? (
+                                        <div className="refresh-time">
+                                            <i className="pi pi-clock" />
+                                            <span>Last updated: {formatRefreshTime(lastRefreshTime)}</span>
+                                        </div>
+                                    ) : null}
+                                </div>
+                                <div className="flag-legend">
+                                    <div className="flag-item">
+                                        <div className="flag-indicator flag1-indicator" />
+                                        <span>SHORT LENGTH</span>
                                     </div>
-                                ) : null}
-                                <div className="m2b-subtitle" style={{ color: "#444", marginTop: "0.25rem" }}>
-                                    Bins with material-list assignment: {stats.withAssignment} / {stats.total} · Wrong
-                                    item (red): {stats.wrong}
+                                    <div className="flag-item">
+                                        <div className="flag-indicator flag2-indicator" />
+                                        <span>WRONG ITEM</span>
+                                    </div>
+                                    <div className="flag-item">
+                                        <div className="flag-indicator empty-rack-indicator" />
+                                        <span>EMPTY RACK</span>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="flag-legend">
-                                <div className="flag-item">
-                                    <div className="flag-indicator flag2-indicator" />
-                                    <span>WRONG / NO LIST MATCH</span>
+                            <div className="grid-content">
+                                <DataTable
+                                    value={sevenGrid.fixedData}
+                                    showGridlines
+                                    className="grid-table"
+                                    scrollable
+                                    scrollHeight="calc(100vh - 420px)"
+                                >
+                                    {sevenGrid.columns.map((col, idx) => (
+                                        <Column
+                                            key={`${col.field}-${idx}`}
+                                            field={col.field}
+                                            header={col.header}
+                                            body={col.body}
+                                            style={col.style}
+                                            bodyClassName={col.bodyClassName}
+                                        />
+                                    ))}
+                                </DataTable>
+                            </div>
+                            <RackVerificationCharts rackData={sevenRackData} rackType="7 Rack" />
+                        </div>
+                    )}
+
+                    {activeTab === 1 && (
+                        <div className="grid-container">
+                            <div className="grid-header">
+                                <div className="header-left">
+                                    <h3>5 Rack — M2B</h3>
+                                    {lastRefreshTime ? (
+                                        <div className="refresh-time">
+                                            <i className="pi pi-clock" />
+                                            <span>Last updated: {formatRefreshTime(lastRefreshTime)}</span>
+                                        </div>
+                                    ) : null}
                                 </div>
-                                <div className="flag-item">
-                                    <div className="flag-indicator empty-rack-indicator" />
-                                    <span>EMPTY RACK</span>
+                                <div className="flag-legend">
+                                    <div className="flag-item">
+                                        <div className="flag-indicator flag1-indicator" />
+                                        <span>SHORT LENGTH</span>
+                                    </div>
+                                    <div className="flag-item">
+                                        <div className="flag-indicator flag2-indicator" />
+                                        <span>WRONG ITEM</span>
+                                    </div>
+                                    <div className="flag-item">
+                                        <div className="flag-indicator empty-rack-indicator" />
+                                        <span>EMPTY RACK</span>
+                                    </div>
                                 </div>
                             </div>
+                            <div className="grid-content">
+                                <DataTable
+                                    value={fiveGrid.fixedData}
+                                    showGridlines
+                                    className="grid-table"
+                                    scrollable
+                                    scrollHeight="calc(100vh - 420px)"
+                                >
+                                    {fiveGrid.columns.map((col, idx) => (
+                                        <Column
+                                            key={`${col.field}-${idx}`}
+                                            field={col.field}
+                                            header={col.header}
+                                            body={col.body}
+                                            style={col.style}
+                                            bodyClassName={col.bodyClassName}
+                                        />
+                                    ))}
+                                </DataTable>
+                            </div>
+                            <RackVerificationCharts rackData={fiveRackData} rackType="5 Rack" />
                         </div>
-                        <div className="grid-content">
-                            <DataTable
-                                value={grid.fixedData}
-                                showGridlines
-                                className="grid-table"
-                                scrollable
-                                scrollHeight="calc(100vh - 380px)"
-                            >
-                                {grid.columns.map((col, idx) => (
-                                    <Column
-                                        key={`${col.field}-${idx}`}
-                                        field={col.field}
-                                        header={col.header}
-                                        body={col.body}
-                                        style={col.style}
-                                        bodyClassName={col.bodyClassName}
-                                    />
-                                ))}
-                            </DataTable>
-                        </div>
-                    </div>
+                    )}
                 </div>
             </div>
         </div>

@@ -24,3 +24,9 @@
     opacity: 0.92;
     font-size: 0.88rem;
 }
+
+.material-verification-dashboard .grid-table .p-datatable-tbody > tr > td .bin-loc-cell[title]:not([title=""]),
+.material-verification-dashboard .grid-table .p-datatable-tbody > tr > td .bin-location-target-cell[title]:not([title=""]),
+.material-verification-dashboard .grid-table .p-datatable-tbody > tr > td .total-cnt-cell[title]:not([title=""]) {
+    cursor: help;
+}

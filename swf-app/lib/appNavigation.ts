@@ -32,7 +32,7 @@ export const APP_NAV_SECTIONS: AppNavSection[] = [
                 description: 'Verification dashboard and rack detail views.'
             },
             {
-                label: 'Material verification (M2B)',
+                label: 'Material verification (M2B) (BETA)',
                 to: '/WareHouse/material-verification-m2b',
                 icon: 'pi pi-fw pi-directions',
                 description: 'New rules: material list → bin (TB_CD_MATERIAL.BIN_LOCATION_CD).'
