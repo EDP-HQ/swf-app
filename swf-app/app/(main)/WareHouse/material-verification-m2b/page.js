@@ -10,7 +10,7 @@ import { RackVerificationCharts } from "@/lib/material-verification-m2b/RackVeri
 ChartJS.register(ArcElement, Tooltip, Legend);
 import {
     fetchM2bVerificationData,
-    formatSuggestionBinDisplay,
+    formatTargetDisplay,
     isM2bEmptyRackSlot,
     rackSlotHoverTitle
 } from "@/lib/material-verification-m2b/fetchM2bVerification";
@@ -56,7 +56,7 @@ function buildRackColumns(rackData, gridCount) {
 
         columns.push({
             field: `TARGET_${gridIndex}`,
-            header: "SUGGESTION BIN",
+            header: "TARGET",
             body: (rowData) => {
                 const dataIndex = startIndex + rowData.rowIndex;
                 if (dataIndex >= rackData.length) return <div className="empty-cell" />;
@@ -69,7 +69,7 @@ function buildRackColumns(rackData, gridCount) {
                         className={`bin-location-target-cell ${isFlagged1 ? "flagged" : ""} ${isEmpty ? "empty-rack" : ""}`}
                         title={hoverTitle}
                     >
-                        {formatSuggestionBinDisplay(item.SUGGESTION_BIN_DESC)}
+                        {formatTargetDisplay(item.BIN_LOCATION_TARGET)}
                     </div>
                 );
             },

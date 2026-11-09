@@ -1,7 +1,9 @@
 export type M2bVerificationRow = {
     id: number;
     BIN_LOC: string;
-    /** KBAS010 Suggestion Bin.lo label (BIN_LOCATION_DESC, not grade TARGET). */
+    /** Bin master grade — classic TARGET column (TB_CD_BIN_LOCATION.BIN_LOCATION_TARGET). */
+    BIN_LOCATION_TARGET?: string;
+    /** KBAS010 Suggestion Bin.lo label (BIN_LOCATION_DESC; M2B rules / tooltips). */
     SUGGESTION_BIN_DESC: string;
     TOTAL_CNT: number;
     FLAG1: string;
@@ -20,10 +22,20 @@ export type M2bVerificationRow = {
     VERIFICATION_RULE?: string;
 };
 
-/** Suggestion bin label (store name) or FREE when unassigned — same as classic TARGET. */
+/** KBAS010 suggestion slot label or FREE when no grade assigned to this bin. */
 export function formatSuggestionBinDisplay(value: string | null | undefined): string {
     const trimmed = value == null ? '' : String(value).trim();
     return trimmed || 'FREE';
+}
+
+/** Classic verification TARGET display (strip FDW noise). */
+export function formatTargetDisplay(value: string | null | undefined): string {
+    if (value == null || value === '') return '';
+    return String(value)
+        .replace(/FDW/gi, '')
+        .replace(/[_\-\s]{2,}/g, ' ')
+        .replace(/^[\s_\-]+|[\s_\-]+$/g, '')
+        .trim();
 }
 
 /** No stock, or no material-list assignment for this bin → grey “empty rack” (classic-style). */
@@ -50,6 +62,7 @@ function formatSuggestionLo(row: M2bVerificationRow, forOnRackGrade: boolean): s
 
 /** Hover — narrative like KBAS010 explanation (lots, grades, suggestion bin). */
 export function rackSlotHoverTitle(row: M2bVerificationRow): string | undefined {
+    const targetLabel = formatTargetDisplay(row.BIN_LOCATION_TARGET) || '—';
     const slotLabel = formatSuggestionBinDisplay(row.SUGGESTION_BIN_DESC);
     const slotCode = row.BIN_LOC?.trim() || '—';
     const lotWord = row.TOTAL_CNT === 1 ? 'lot' : 'lots';
@@ -62,7 +75,7 @@ export function rackSlotHoverTitle(row: M2bVerificationRow): string | undefined 
         if (row.VERIFICATION_RULE === 'CLASSIC') {
             return [
                 `No stock on this bin now (${slotCode}).`,
-                `7 Rack fixed zone (bins 1–65): TARGET from bin master → ${slotLabel}.`
+                `7 Rack fixed zone (bins 1–65): TARGET from bin master → ${targetLabel}.`
             ].join('\n');
         }
         if ((row.SUGGESTION_MATERIAL_CNT ?? 0) > 0 && expectedGrade) {
@@ -90,8 +103,10 @@ export function rackSlotHoverTitle(row: M2bVerificationRow): string | undefined 
         );
     }
 
+    lines.push(`Bin master TARGET: ${targetLabel}.`);
+
     if (row.VERIFICATION_RULE === 'CLASSIC') {
-        lines.push(`7 Rack fixed zone: TARGET ${slotLabel} from TB_CD_BIN_LOCATION (classic).`);
+        lines.push(`7 Rack fixed zone (bins 1–65): wrong-item uses REF_MATERIAL_CD (classic).`);
         if (expectedGrade) {
             lines.push(`Bin REF material: ${expectedLabel}.`);
         }
@@ -136,6 +151,12 @@ function normalizeRow(raw: Record<string, unknown>, index: number): M2bVerificat
     return {
         id: index + 1,
         BIN_LOC: String(raw.BIN_LOC ?? raw.bin_loc ?? ''),
+        BIN_LOCATION_TARGET:
+            raw.BIN_LOCATION_TARGET != null
+                ? String(raw.BIN_LOCATION_TARGET)
+                : raw.bin_location_target != null
+                  ? String(raw.bin_location_target)
+                  : undefined,
         SUGGESTION_BIN_DESC: String(
             raw.SUGGESTION_BIN_DESC ??
                 raw.suggestion_bin_desc ??
