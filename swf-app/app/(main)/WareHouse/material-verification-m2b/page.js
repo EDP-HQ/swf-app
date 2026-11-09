@@ -124,7 +124,45 @@ export default function MaterialVerificationM2bPage() {
     const [activeTab, setActiveTab] = useState(0);
     const [lastRefreshTime, setLastRefreshTime] = useState(null);
     const [error, setError] = useState(null);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isAutoRefresh, setIsAutoRefresh] = useState(false);
     const tabViewRef = useRef(null);
+    const refreshIntervalRef = useRef(null);
+
+    const toggleFullscreen = () => {
+        if (!isFullscreen) {
+            const el = tabViewRef.current;
+            if (el?.requestFullscreen) {
+                el.requestFullscreen();
+            } else if (el?.webkitRequestFullscreen) {
+                el.webkitRequestFullscreen();
+            } else if (el?.msRequestFullscreen) {
+                el.msRequestFullscreen();
+            }
+        } else if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        }
+    };
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(!!document.fullscreenElement);
+        };
+
+        document.addEventListener("fullscreenchange", handleFullscreenChange);
+        document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+        document.addEventListener("msfullscreenchange", handleFullscreenChange);
+
+        return () => {
+            document.removeEventListener("fullscreenchange", handleFullscreenChange);
+            document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+            document.removeEventListener("msfullscreenchange", handleFullscreenChange);
+        };
+    }, []);
 
     const loadData = async () => {
         setLoading(true);
@@ -144,6 +182,27 @@ export default function MaterialVerificationM2bPage() {
     useEffect(() => {
         loadData();
     }, []);
+
+    const toggleAutoRefresh = () => {
+        setIsAutoRefresh((prev) => !prev);
+    };
+
+    useEffect(() => {
+        if (isAutoRefresh) {
+            refreshIntervalRef.current = setInterval(() => {
+                loadData();
+            }, 300000);
+        } else if (refreshIntervalRef.current) {
+            clearInterval(refreshIntervalRef.current);
+            refreshIntervalRef.current = null;
+        }
+
+        return () => {
+            if (refreshIntervalRef.current) {
+                clearInterval(refreshIntervalRef.current);
+            }
+        };
+    }, [isAutoRefresh]);
 
     const grouped = useMemo(() => {
         return verificationData.reduce((acc, item) => {
@@ -171,11 +230,28 @@ export default function MaterialVerificationM2bPage() {
                 <h1>SWR RACK Verification — Material → Bin</h1>
                 <div className="header-controls">
                     <Button
+                        icon={isAutoRefresh ? "pi pi-pause" : "pi pi-sync"}
+                        onClick={toggleAutoRefresh}
+                        tooltip={isAutoRefresh ? "Stop Auto Refresh (5min)" : "Start Auto Refresh (5min)"}
+                        tooltipOptions={{ position: "bottom" }}
+                        className={`p-button-sm p-button-text ${isAutoRefresh ? "auto-refresh-active" : ""}`}
+                        severity={isAutoRefresh ? "success" : "secondary"}
+                    />
+                    <Button
+                        icon={isFullscreen ? "pi pi-window-minimize" : "pi pi-window-maximize"}
+                        onClick={toggleFullscreen}
+                        tooltip={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                        tooltipOptions={{ position: "bottom" }}
+                        className="p-button-sm p-button-text"
+                        severity="secondary"
+                    />
+                    <Button
                         icon="pi pi-refresh"
                         onClick={loadData}
                         disabled={loading}
                         loading={loading}
                         tooltip="Refresh"
+                        tooltipOptions={{ position: "bottom" }}
                         className="p-button-sm p-button-text"
                         severity="secondary"
                     />
