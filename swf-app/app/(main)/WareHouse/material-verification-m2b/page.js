@@ -227,7 +227,7 @@ export default function MaterialVerificationM2bPage() {
     return (
         <div className="material-verification-dashboard">
             <div className="compact-header">
-                <h1>SWR RACK Verification — Material → Bin</h1>
+                <h1>SWR Factory RACK Material Verification</h1>
                 <div className="header-controls">
                     <Button
                         icon={isAutoRefresh ? "pi pi-pause" : "pi pi-sync"}
@@ -282,7 +282,7 @@ export default function MaterialVerificationM2bPage() {
                         <div className="grid-container">
                             <div className="grid-header">
                                 <div className="header-left">
-                                    <h3>7 Rack — M2B</h3>
+                                    <h3>7 Rack - Material Verification</h3>
                                     {lastRefreshTime ? (
                                         <div className="refresh-time">
                                             <i className="pi pi-clock" />
@@ -333,7 +333,7 @@ export default function MaterialVerificationM2bPage() {
                         <div className="grid-container">
                             <div className="grid-header">
                                 <div className="header-left">
-                                    <h3>5 Rack — M2B</h3>
+                                    <h3>5 Rack - Material Verification</h3>
                                     {lastRefreshTime ? (
                                         <div className="refresh-time">
                                             <i className="pi pi-clock" />

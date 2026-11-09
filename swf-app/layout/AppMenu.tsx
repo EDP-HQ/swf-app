@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import AppMenuitem from './AppMenuitem';
 import { MenuProvider } from './context/menucontext';
-import { APP_NAV_SECTIONS } from '@/lib/appNavigation';
+import { getVisibleNavSections } from '@/lib/appNavigation';
 
 const AppMenu = () => {
     const fullMenu = useMemo(
@@ -12,7 +12,7 @@ const AppMenu = () => {
                 label: 'Home',
                 items: [{ label: 'Home', icon: 'pi pi-fw pi-home', to: '/' }]
             },
-            ...APP_NAV_SECTIONS.map((section) => ({
+            ...getVisibleNavSections().map((section) => ({
                 label: section.label,
                 items: section.items.map(({ label, to, icon }) => ({ label, to, icon }))
             }))

@@ -4,7 +4,7 @@ import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Card } from 'primereact/card';
-import { APP_NAV_SECTIONS } from '@/lib/appNavigation';
+import { getVisibleNavSections } from '@/lib/appNavigation';
 
 const HOME_BRAND_ICON = '/favicon.ico?v=esl-app';
 
@@ -29,7 +29,9 @@ export default function HomeHubPage() {
             </div>
             <div className="col-12">
                 <div className="grid">
-                    {APP_NAV_SECTIONS.flatMap((section) => section.items).map((item) => (
+                    {getVisibleNavSections()
+                        .flatMap((section) => section.items)
+                        .map((item) => (
                         <div key={item.to} className="col-12 md:col-6 lg:col-4">
                             <Link
                                 href={item.to}

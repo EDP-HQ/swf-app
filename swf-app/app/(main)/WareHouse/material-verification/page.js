@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { DataTable } from "primereact/datatable";
 import { Column } from "primereact/column";
 import { Card } from "primereact/card";
@@ -24,6 +25,36 @@ function formatTargetDisplay(value) {
         .replace(/[_\-\s]{2,}/g, ' ')
         .replace(/^[\s_\-]+|[\s_\-]+$/g, '')
         .trim();
+}
+
+/** Emergency rollback only — menu uses M2B at /WareHouse/material-verification-m2b. */
+const CLASSIC_MATERIAL_VERIFICATION_UI_ENABLED = false;
+
+const M2B_MATERIAL_VERIFICATION_PATH = "/WareHouse/material-verification-m2b";
+
+function ClassicMaterialVerificationRetiredNotice() {
+    return (
+        <div className="material-verification-dashboard material-verification-retired">
+            <div className="compact-header">
+                <h1>SWR Factory RACK Material Verification</h1>
+            </div>
+            <div className="material-verification-retired-panel">
+                <p className="material-verification-retired-title">This link is no longer in use</p>
+                <p className="material-verification-retired-body">
+                    Material verification has moved to the current screen. Bookmarks or old shortcuts to
+                    this address will not load the classic KBAS090 dashboard. Use the button below to open
+                    the active verification page.
+                </p>
+                <Link href={M2B_MATERIAL_VERIFICATION_PATH} className="material-verification-retired-link">
+                    <Button
+                        label="Open Material Verification"
+                        icon="pi pi-arrow-right"
+                        iconPos="right"
+                    />
+                </Link>
+            </div>
+        </div>
+    );
 }
 
 const MaterialVerificationDashboard = () => {
@@ -771,4 +802,9 @@ const MaterialVerificationDashboard = () => {
     );
 };
 
-export default MaterialVerificationDashboard; 
+export default function MaterialVerificationPage() {
+    if (!CLASSIC_MATERIAL_VERIFICATION_UI_ENABLED) {
+        return <ClassicMaterialVerificationRetiredNotice />;
+    }
+    return <MaterialVerificationDashboard />;
+}

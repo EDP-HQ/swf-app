@@ -8,6 +8,8 @@ export type AppNavItem = {
     icon: string;
     /** Short blurb for the home hub card */
     description: string;
+    /** When true, route stays live but is omitted from menu and home hub */
+    hidden?: boolean;
 };
 
 export type AppNavSection = {
@@ -27,15 +29,16 @@ export const APP_NAV_SECTIONS: AppNavSection[] = [
             },
             {
                 label: 'Material verification',
-                to: '/WareHouse/material-verification',
+                to: '/WareHouse/material-verification-m2b',
                 icon: 'pi pi-fw pi-check-square',
-                description: 'Verification dashboard and rack detail views.'
+                description: 'Rack verification: bin TARGET, material-list rules, and rack detail views.'
             },
             {
-                label: 'Material verification (M2B) (BETA)',
-                to: '/WareHouse/material-verification-m2b',
-                icon: 'pi pi-fw pi-directions',
-                description: 'New rules: material list → bin (TB_CD_MATERIAL.BIN_LOCATION_CD).'
+                label: 'Material verification (classic)',
+                to: '/WareHouse/material-verification',
+                icon: 'pi pi-fw pi-check-square',
+                description: 'Legacy KBAS090 screen (bin REF_MATERIAL).',
+                hidden: true
             }
         ]
     },
@@ -90,3 +93,11 @@ export const APP_NAV_SECTIONS: AppNavSection[] = [
         ]
     }
 ];
+
+/** Menu / home hub entries (excludes `hidden` items). */
+export function getVisibleNavSections(): AppNavSection[] {
+    return APP_NAV_SECTIONS.map((section) => ({
+        ...section,
+        items: section.items.filter((item) => !item.hidden)
+    }));
+}

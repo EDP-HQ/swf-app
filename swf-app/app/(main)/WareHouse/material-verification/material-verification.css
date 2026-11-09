@@ -525,3 +525,37 @@
 .tab-item {
     animation: fadeIn 0.5s ease-in;
 }
+
+.material-verification-retired {
+    min-height: 60vh;
+}
+
+.material-verification-retired-panel {
+    max-width: 520px;
+    margin: 3rem auto 2rem;
+    padding: 2rem 2.25rem;
+    border-radius: 12px;
+    background: var(--surface-card, #fff);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    border: 1px solid var(--surface-border, #e0e0e0);
+    text-align: center;
+}
+
+.material-verification-retired-title {
+    margin: 0 0 1rem;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-color, #1a1a1a);
+}
+
+.material-verification-retired-body {
+    margin: 0 0 1.75rem;
+    line-height: 1.55;
+    color: var(--text-color-secondary, #555);
+    text-align: left;
+}
+
+.material-verification-retired-link {
+    display: inline-block;
+    text-decoration: none;
+}
