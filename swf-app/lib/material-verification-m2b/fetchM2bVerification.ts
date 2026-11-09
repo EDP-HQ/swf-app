@@ -59,6 +59,12 @@ export function rackSlotHoverTitle(row: M2bVerificationRow): string | undefined 
     const expectedLabel = formatGradeLabel(expectedGrade, row.EXPECTED_MATERIAL_DESC);
 
     if (!row.TOTAL_CNT) {
+        if (row.VERIFICATION_RULE === 'CLASSIC') {
+            return [
+                `No stock on this bin now (${slotCode}).`,
+                `7 Rack fixed zone (bins 1–50): TARGET from bin master → ${slotLabel}.`
+            ].join('\n');
+        }
         if ((row.SUGGESTION_MATERIAL_CNT ?? 0) > 0 && expectedGrade) {
             return [
                 `No stock on this bin now (${slotCode}).`,
@@ -84,7 +90,12 @@ export function rackSlotHoverTitle(row: M2bVerificationRow): string | undefined 
         );
     }
 
-    if ((row.SUGGESTION_MATERIAL_CNT ?? 0) > 0 && expectedGrade) {
+    if (row.VERIFICATION_RULE === 'CLASSIC') {
+        lines.push(`7 Rack fixed zone: TARGET ${slotLabel} from TB_CD_BIN_LOCATION (classic).`);
+        if (expectedGrade) {
+            lines.push(`Bin REF material: ${expectedLabel}.`);
+        }
+    } else if ((row.SUGGESTION_MATERIAL_CNT ?? 0) > 0 && expectedGrade) {
         lines.push(
             `This bin on KBAS010: ${expectedGrade} is assigned to ${slotCode} → ${slotLabel}.`
         );
@@ -98,7 +109,11 @@ export function rackSlotHoverTitle(row: M2bVerificationRow): string | undefined 
     }
 
     if (row.FLAG2 === 'N') {
-        lines.push('Wrong item: material on rack does not match bin assignment on material list.');
+        lines.push(
+            row.VERIFICATION_RULE === 'CLASSIC'
+                ? 'Wrong item: inventory grade does not match bin REF_MATERIAL_CD (classic rule).'
+                : 'Wrong item: material on rack does not match bin assignment on material list.'
+        );
     }
     if (row.FLAG1 === 'N') {
         lines.push(
@@ -109,9 +124,12 @@ export function rackSlotHoverTitle(row: M2bVerificationRow): string | undefined 
     return lines.length ? lines.join('\n') : undefined;
 }
 
-export function isM2bEmptyRackSlot(row: Pick<M2bVerificationRow, 'TOTAL_CNT' | 'SUGGESTION_MATERIAL_CNT'>): boolean {
-    const assigned = row.SUGGESTION_MATERIAL_CNT ?? 0;
-    return !row.TOTAL_CNT || assigned === 0;
+export function isM2bEmptyRackSlot(
+    row: Pick<M2bVerificationRow, 'TOTAL_CNT' | 'SUGGESTION_MATERIAL_CNT' | 'VERIFICATION_RULE'>
+): boolean {
+    if (!row.TOTAL_CNT) return true;
+    if (row.VERIFICATION_RULE === 'CLASSIC') return false;
+    return (row.SUGGESTION_MATERIAL_CNT ?? 0) === 0;
 }
 
 function normalizeRow(raw: Record<string, unknown>, index: number): M2bVerificationRow {
