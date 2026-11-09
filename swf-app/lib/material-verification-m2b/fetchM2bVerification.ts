@@ -62,7 +62,7 @@ export function rackSlotHoverTitle(row: M2bVerificationRow): string | undefined 
         if (row.VERIFICATION_RULE === 'CLASSIC') {
             return [
                 `No stock on this bin now (${slotCode}).`,
-                `7 Rack fixed zone (bins 1–50): TARGET from bin master → ${slotLabel}.`
+                `7 Rack fixed zone (bins 1–65): TARGET from bin master → ${slotLabel}.`
             ].join('\n');
         }
         if ((row.SUGGESTION_MATERIAL_CNT ?? 0) > 0 && expectedGrade) {
