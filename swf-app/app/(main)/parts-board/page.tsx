@@ -65,16 +65,24 @@ import {
     clampCardSize,
     clearBoardLayout,
     emptyBoardLayout,
+    flattenColumns,
     loadBoardLayout,
     moveInColumns,
     normalizeColumns,
+    removeFromLayout,
     renameInLayout,
     saveBoardLayout,
     type BoardLayout,
     type CardSize,
     type DropWhere
 } from '@/lib/roller-monitoring/boardLayout';
-import { fetchCmMachines, insertCmMachine, renameCmMachine, setCmMachineVisible } from '@/lib/roller-monitoring/cmMachineClient';
+import {
+    deleteCmMachine,
+    fetchCmMachines,
+    insertCmMachine,
+    renameCmMachine,
+    setCmMachineVisible
+} from '@/lib/roller-monitoring/cmMachineClient';
 import {
     fetchGearboxAssets,
     gearboxLabel,
@@ -1143,6 +1151,11 @@ export default function PartsBoardPage() {
     const [dragName, setDragName] = useState<string | null>(null);
     const [dropName, setDropName] = useState<string | null>(null);
     const [dropWhere, setDropWhere] = useState<DropWhere | null>(null);
+    const [confirmDeleteMachine, setConfirmDeleteMachine] = useState<{
+        name: string;
+        company?: string;
+        factory?: string;
+    } | null>(null);
     const [confirmRemove, setConfirmRemove] = useState<
         null | { kind: 'machine'; name: string } | { kind: 'component' }
     >(null);
@@ -2547,6 +2560,63 @@ export default function PartsBoardPage() {
         }
     };
 
+    const handleDeleteMachinePermanently = async (
+        machineName: string,
+        company?: string,
+        factory?: string
+    ) => {
+        setHideMachineSaving(true);
+        const lineCd = processCd === 'STRANDING' ? strandLineCd : null;
+        try {
+            await deleteCmMachine(
+                {
+                    processCd,
+                    lineCd,
+                    machineName,
+                    company,
+                    factory
+                },
+                dbTarget
+            );
+            const nextSaved = removeFromLayout(savedLayout, machineName);
+            const nextLayout = removeFromLayout(
+                { columns: layoutColumns, order: flattenColumns(layoutColumns), sizes: cardSizes },
+                machineName
+            );
+            setSavedLayout(nextSaved);
+            setLayoutColumns(nextLayout.columns);
+            setCardSizes(nextLayout.sizes);
+            saveBoardLayout(processCd, lineCd, nextLayout.columns.length ? nextLayout : nextSaved);
+            toast.current?.show({
+                severity: 'success',
+                summary: 'Machine deleted',
+                detail: `${machineName} removed from the registry.`,
+                life: 4000
+            });
+            const rows = await fetchCmMachines(processCd, lineCd, dbTarget, { includeHidden: true });
+            setHiddenMachines(
+                rows
+                    .filter((m) => !m.visible)
+                    .map((m) => ({
+                        machineName: m.machineName,
+                        company: m.company,
+                        factory: m.factory
+                    }))
+            );
+            await loadDashboard(true, dbTarget);
+        } catch (e) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Delete machine failed',
+                detail: e instanceof Error ? e.message : undefined,
+                life: 6000
+            });
+        } finally {
+            setHideMachineSaving(false);
+            setConfirmDeleteMachine(null);
+        }
+    };
+
     const handleUnhideMachine = async (machineName: string, company?: string, factory?: string) => {
         setHideMachineSaving(true);
         try {
@@ -3498,6 +3568,45 @@ export default function PartsBoardPage() {
 
             <Dialog
                 className="pb-add-dialog"
+                header="Delete machine permanently"
+                visible={confirmDeleteMachine !== null}
+                style={{ width: 'min(92vw, 28rem)' }}
+                onHide={() => !hideMachineSaving && setConfirmDeleteMachine(null)}
+                dismissableMask={!hideMachineSaving}
+            >
+                <p className="m-0 mb-2">
+                    Delete <strong>{confirmDeleteMachine?.name}</strong> from this process registry?
+                </p>
+                <p className="text-color-secondary text-sm mt-0 mb-3">
+                    This cannot be undone. The machine must already be hidden. Remove active components and mounted
+                    gearboxes first. Component history rows are kept.
+                </p>
+                <div className="flex justify-content-end gap-2">
+                    <Button
+                        label="Cancel"
+                        text
+                        disabled={hideMachineSaving}
+                        onClick={() => setConfirmDeleteMachine(null)}
+                    />
+                    <Button
+                        label="Delete permanently"
+                        icon="pi pi-trash"
+                        severity="danger"
+                        loading={hideMachineSaving}
+                        onClick={() => {
+                            if (!confirmDeleteMachine) return;
+                            void handleDeleteMachinePermanently(
+                                confirmDeleteMachine.name,
+                                confirmDeleteMachine.company,
+                                confirmDeleteMachine.factory
+                            );
+                        }}
+                    />
+                </div>
+            </Dialog>
+
+            <Dialog
+                className="pb-add-dialog"
                 header="Confirm remove"
                 visible={confirmRemove !== null}
                 style={{ width: 'min(92vw, 26rem)' }}
@@ -3834,7 +3943,7 @@ export default function PartsBoardPage() {
                 <div className="flex flex-column gap-3">
                     <Message
                         severity="info"
-                        text="Hide a machine from this process, or restore one that was removed."
+                        text="Hide removes a machine from the board. Under Removed, delete permanently frees the name in the registry (hide first)."
                     />
                     <div>
                         <div className="font-semibold text-sm mb-2">On this board</div>
@@ -3872,14 +3981,35 @@ export default function PartsBoardPage() {
                             {hiddenMachines.map((m) => (
                                 <li key={m.machineName} className="pb-hidden-list__row">
                                     <span className="pb-hidden-list__name">{m.machineName}</span>
-                                    <Button
-                                        label="Show"
-                                        icon="pi pi-eye"
-                                        size="small"
-                                        text
-                                        loading={hideMachineSaving}
-                                        onClick={() => void handleUnhideMachine(m.machineName, m.company, m.factory)}
-                                    />
+                                    <div className="flex gap-1 align-items-center">
+                                        <Button
+                                            label="Show"
+                                            icon="pi pi-eye"
+                                            size="small"
+                                            text
+                                            loading={hideMachineSaving}
+                                            onClick={() =>
+                                                void handleUnhideMachine(m.machineName, m.company, m.factory)
+                                            }
+                                        />
+                                        <Button
+                                            icon="pi pi-trash"
+                                            size="small"
+                                            text
+                                            severity="danger"
+                                            disabled={hideMachineSaving}
+                                            aria-label={`Delete ${m.machineName} permanently`}
+                                            tooltip="Delete from registry"
+                                            tooltipOptions={{ position: 'top' }}
+                                            onClick={() =>
+                                                setConfirmDeleteMachine({
+                                                    name: m.machineName,
+                                                    company: m.company,
+                                                    factory: m.factory
+                                                })
+                                            }
+                                        />
+                                    </div>
                                 </li>
                             ))}
                         </ul>

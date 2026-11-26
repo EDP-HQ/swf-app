@@ -98,6 +98,16 @@ export function saveBoardLayout(
     }
 }
 
+export function removeFromLayout(layout: BoardLayout, machineName: string): BoardLayout {
+    const name = machineName.trim();
+    if (!name) return layout;
+    const columns = layout.columns
+        .map((col) => col.filter((n) => n !== name))
+        .filter((col) => col.length > 0);
+    const { [name]: _drop, ...sizes } = layout.sizes;
+    return { columns, order: flattenColumns(columns), sizes };
+}
+
 export function renameInLayout(layout: BoardLayout, oldName: string, newName: string): BoardLayout {
     const from = oldName.trim();
     const to = newName.trim();
