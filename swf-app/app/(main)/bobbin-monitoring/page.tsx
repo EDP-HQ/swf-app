@@ -102,8 +102,8 @@ const BOBBIN_DEV_REFERENCE = `Client → API → database
    • sp_Bobbin_Limit_Warning_Update → insert TB_BOBBIN_LIMIT
 
 4) Check bobbin (scan routing — extractLcCd.ts isPb18LifespanBobbinCode)
-   • PB18* → lifespan/cycle only: last-4 LC_CD → GET …/bobbincycle, …/bobbinlifespan (no scrap)
-   • Other codes → scrap only: GET …/scrapinventory; then POST …/pdascrap once per PL_NO (auto when multiple rows)
+   • PB18* → cycle/lifespan (last-4 LC_CD) + scrap when signed in: GET …/scrapinventory (full barcode) → countdown → pdascrap per PL_NO
+   • Other codes → scrap only: GET …/scrapinventory; then POST …/pdascrap once per PL_NO (auto countdown)
    • PB18 path: fetchBobbinCycle, mapBobbincycleRows, fetchBobbinLifespanStartDate, buildLifespanInfo, mergeSummaryWithCycleLimit, mergeLifespanIntoStatus`;
 
 function statusSeverity(status: BobbinSummary['status']): 'success' | 'warning' | 'danger' | 'info' {
@@ -702,6 +702,8 @@ export default function BobbinMonitoringPage() {
     const [scrapPending, setScrapPending] = useState<ScrapPendingState | null>(null);
     const scrapSessionRef = useRef(0);
     const activeScrapRunKeyRef = useRef<string | null>(null);
+    /** After PB18 scrap, restore cycle dashboard instead of clearing to idle. */
+    const scrapRestoreStateRef = useRef<BobbinCheckState | null>(null);
 
     useEffect(() => {
         try {
@@ -802,12 +804,26 @@ export default function BobbinMonitoringPage() {
     const cancelScrapPending = useCallback(() => {
         scrapSessionRef.current += 1;
         setScrapPending(null);
-        setState({ kind: 'idle' });
+        const restore = scrapRestoreStateRef.current;
+        scrapRestoreStateRef.current = null;
+        setState(restore ?? { kind: 'idle' });
         focusInput();
     }, [focusInput]);
 
+    const queueAutoScrap = useCallback((barcode: string, plNos: string[], restoreAfter: BobbinCheckState | null) => {
+        scrapRestoreStateRef.current = restoreAfter;
+        scrapSessionRef.current += 1;
+        setScrapPending({
+            barcode,
+            plNos,
+            phase: 'countdown',
+            secondsLeft: SCRAP_COUNTDOWN_SECONDS
+        });
+    }, []);
+
     const signOutPda = useCallback(() => {
         scrapSessionRef.current += 1;
+        scrapRestoreStateRef.current = null;
         setScrapPending(null);
         recordBobbinPdaLogout();
         clearBobbinPdaSession();
@@ -1099,11 +1115,17 @@ export default function BobbinMonitoringPage() {
                 const result = await scrapInventoryPlNos(barcode, plNos);
                 if (session !== scrapSessionRef.current) return;
                 setScrapPending(null);
-                setState(
-                    result.ok
-                        ? { kind: 'idle' }
-                        : { kind: 'error', message: result.message ?? 'Scrap failed.' }
-                );
+                const restore = scrapRestoreStateRef.current;
+                scrapRestoreStateRef.current = null;
+                if (restore) {
+                    setState(restore);
+                } else {
+                    setState(
+                        result.ok
+                            ? { kind: 'idle' }
+                            : { kind: 'error', message: result.message ?? 'Scrap failed.' }
+                    );
+                }
                 focusInput();
             } finally {
                 if (activeScrapRunKeyRef.current === runKey) {
@@ -1147,13 +1169,7 @@ export default function BobbinMonitoringPage() {
                     return;
                 }
                 const plNos = inventory.rows.map((r) => r.plNo);
-                scrapSessionRef.current += 1;
-                setScrapPending({
-                    barcode: trimmed,
-                    plNos,
-                    phase: 'countdown',
-                    secondsLeft: SCRAP_COUNTDOWN_SECONDS
-                });
+                queueAutoScrap(trimmed, plNos, null);
                 setState({ kind: 'idle' });
             } catch {
                 setState({
@@ -1184,9 +1200,13 @@ export default function BobbinMonitoringPage() {
 
         setState({ kind: 'loading', pendingCode: trimmed });
         try {
-            const [result, lifespanStart] = await Promise.all([
+            const inventoryPromise = pdaSession
+                ? fetchBobbinInventoryForScrap(trimmed)
+                : Promise.resolve(null);
+            const [result, lifespanStart, inventory] = await Promise.all([
                 fetchBobbinCycle(trimmed),
-                fetchBobbinLifespanStartDate(lcCd)
+                fetchBobbinLifespanStartDate(lcCd),
+                inventoryPromise
             ]);
 
             if (!result.ok) {
@@ -1200,12 +1220,21 @@ export default function BobbinMonitoringPage() {
 
             const lifespan = buildLifespanInfo(lifespanStart);
 
-            setState({
+            const foundState: BobbinCheckState = {
                 kind: 'found',
                 baseSummary: result.data.summary,
                 lcCd: result.data.lcCd,
                 lifespan
-            });
+            };
+            setState(foundState);
+
+            if (inventory?.ok && inventory.rows.length > 0) {
+                queueAutoScrap(
+                    trimmed,
+                    inventory.rows.map((r) => r.plNo),
+                    foundState
+                );
+            }
         } catch {
             setState({
                 kind: 'error',
@@ -1215,7 +1244,7 @@ export default function BobbinMonitoringPage() {
             setCode('');
             focusInput();
         }
-    }, [code, cycleLimit, developerMode, focusInput, pdaSession, scrapFlowActive]);
+    }, [code, cycleLimit, developerMode, focusInput, pdaSession, queueAutoScrap, scrapFlowActive]);
 
     const onClear = useCallback(() => {
         if (scrapPending?.phase === 'countdown') {
@@ -1507,7 +1536,7 @@ export default function BobbinMonitoringPage() {
                         <p className="bobbin-page-subtitle bobbin-page-subtitle--wall m-0">
                             {developerMode ? (
                                 <>
-                                    PB18 codes: check cycle and lifespan. Other codes: scrap all lots automatically when redundant.
+                                    PB18: cycle, lifespan, then auto-scrap when inventory exists (PDA signed in). Other codes: scrap only.
                                 </>
                             ) : (
                                 <>Scan or type a bobbin code, then check.</>
@@ -1682,7 +1711,8 @@ export default function BobbinMonitoringPage() {
                             />
                             {developerMode && (
                                 <small className="text-color-secondary line-height-3">
-                                    <strong>PB18</strong> prefix: cycle and lifespan. Other prefixes: scrap only (full
+                                    <strong>PB18</strong>: cycle, lifespan, and auto-scrap when signed in. Other prefixes:
+                                    scrap only (full
                                     barcode).
                                 </small>
                             )}
